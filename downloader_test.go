@@ -101,3 +101,13 @@ func TestRunAndPool(t *testing.T) {
 	require.True(t, callCount > 10)
 	require.Equal(t, int64(4897949), d.Completed())
 }
+
+func TestErrorOnFileOpening(t *testing.T) {
+	tmpFile := makeTmpFile(t)
+	defer os.Remove(tmpFile)
+
+	require.NoError(t, ioutil.WriteFile(tmpFile, []byte{}, 0000))
+	d, err := Download(tmpFile, "http://go.bug.st/test.txt")
+	require.Error(t, err)
+	require.Nil(t, d)
+}
