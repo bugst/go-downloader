@@ -60,3 +60,12 @@ func TestResume(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, file1, file2)
 }
+
+func TestInvalidRequest(t *testing.T) {
+	tmpFile := makeTmpFile(t)
+	defer os.Remove(tmpFile)
+
+	d, err := Download(tmpFile, "asd://go.bug.st/test.txt")
+	require.Error(t, err)
+	require.Nil(t, d)
+}
