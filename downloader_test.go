@@ -70,6 +70,12 @@ func TestInvalidRequest(t *testing.T) {
 	d, err := Download(tmpFile, "asd://go.bug.st/test.txt")
 	require.Error(t, err)
 	require.Nil(t, d)
+	fmt.Println("ERROR:", err)
+
+	d, err = Download(tmpFile, "://")
+	require.Error(t, err)
+	require.Nil(t, d)
+	fmt.Println("ERROR:", err)
 }
 
 func TestRunAndPool(t *testing.T) {
