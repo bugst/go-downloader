@@ -74,6 +74,7 @@ func (d *Downloader) AsyncRun() {
 		}
 	}
 	d.Done <- true
+	d.Close()
 }
 
 // Run starts the downloader and waits until it completes the download.
