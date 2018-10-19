@@ -23,6 +23,7 @@ type Downloader struct {
 	resp      *http.Response
 	out       io.Writer
 	completed int64
+	size      int64
 	err       error
 }
 
@@ -33,7 +34,7 @@ func (d *Downloader) Close() error {
 
 // Size return the size of the download
 func (d *Downloader) Size() int64 {
-	return d.resp.ContentLength
+	return d.size
 }
 
 // RunAndPoll starts the downloader copy-loop and calls the poll function every
@@ -135,6 +136,7 @@ func Download(file string, url string) (*Downloader, error) {
 		resp:      resp,
 		out:       f,
 		completed: completed,
+		size:      resp.ContentLength + completed,
 	}
 	return d, nil
 }

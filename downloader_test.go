@@ -31,8 +31,11 @@ func TestDownload(t *testing.T) {
 
 	d, err := Download(tmpFile, "https://go.bug.st/test.txt")
 	require.NoError(t, err)
+	require.Equal(t, int64(0), d.Completed())
+	require.Equal(t, int64(8052), d.Size())
 	require.NoError(t, d.Run())
 	require.Equal(t, int64(8052), d.Completed())
+	require.Equal(t, int64(8052), d.Size())
 
 	file1, err := ioutil.ReadFile("testdata/test.txt")
 	require.NoError(t, err)
@@ -52,9 +55,11 @@ func TestResume(t *testing.T) {
 
 	d, err := Download(tmpFile, "https://go.bug.st/test.txt")
 	require.Equal(t, int64(3506), d.Completed())
+	require.Equal(t, int64(8052), d.Size())
 	require.NoError(t, err)
 	require.NoError(t, d.Run())
 	require.Equal(t, int64(8052), d.Completed())
+	require.Equal(t, int64(8052), d.Size())
 
 	file1, err := ioutil.ReadFile("testdata/test.txt")
 	require.NoError(t, err)
