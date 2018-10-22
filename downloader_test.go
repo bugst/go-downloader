@@ -68,6 +68,30 @@ func TestResume(t *testing.T) {
 	require.Equal(t, file1, file2)
 }
 
+func TestNoResume(t *testing.T) {
+	tmpFile := makeTmpFile(t)
+	defer os.Remove(tmpFile)
+
+	part, err := ioutil.ReadFile("testdata/test.txt.part")
+	require.NoError(t, err)
+	err = ioutil.WriteFile(tmpFile, part, 0644)
+	require.NoError(t, err)
+
+	d, err := Download(tmpFile, "https://go.bug.st/test.txt", NoResume)
+	require.Equal(t, int64(0), d.Completed())
+	require.Equal(t, int64(8052), d.Size())
+	require.NoError(t, err)
+	require.NoError(t, d.Run())
+	require.Equal(t, int64(8052), d.Completed())
+	require.Equal(t, int64(8052), d.Size())
+
+	file1, err := ioutil.ReadFile("testdata/test.txt")
+	require.NoError(t, err)
+	file2, err := ioutil.ReadFile(tmpFile)
+	require.NoError(t, err)
+	require.Equal(t, file1, file2)
+}
+
 func TestInvalidRequest(t *testing.T) {
 	tmpFile := makeTmpFile(t)
 	defer os.Remove(tmpFile)
