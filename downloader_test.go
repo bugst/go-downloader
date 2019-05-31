@@ -7,8 +7,10 @@
 package downloader
 
 import (
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"net/http"
 	"os"
 	"testing"
 	"time"
@@ -120,7 +122,7 @@ func TestRunAndPool(t *testing.T) {
 		prevCurr = curr
 		callCount++
 	}
-	d.RunAndPoll(callback, time.Millisecond)
+	_ = d.RunAndPoll(callback, time.Millisecond)
 	fmt.Printf("callback called %d times\n", callCount)
 	require.True(t, callCount > 10)
 	require.Equal(t, int64(4897949), d.Completed())
@@ -134,4 +136,30 @@ func TestErrorOnFileOpening(t *testing.T) {
 	d, err := Download(tmpFile, "http://go.bug.st/test.txt")
 	require.Error(t, err)
 	require.Nil(t, d)
+}
+
+// TestApplyUserAgentHeaderUsingConfig test uses the https://postman-echo.com/ service
+func TestApplyUserAgentHeaderUsingConfig(t *testing.T) {
+	type echoBody struct {
+		Headers map[string]string
+	}
+
+	tmpFile := makeTmpFile(t)
+	defer os.Remove(tmpFile)
+
+	config := Config{
+		RequestHeaders: http.Header{
+			"User-Agent": []string{"go-downloader / 0.0.0-test"},
+		},
+	}
+
+	d, err := DownloadWithConfig(tmpFile, "https://postman-echo.com/headers", config)
+	require.NoError(t, err)
+
+	testEchoBody := echoBody{}
+	body, err := ioutil.ReadAll(d.resp.Body)
+	require.NoError(t, err)
+	err = json.Unmarshal(body, &testEchoBody)
+	require.NoError(t, err)
+ 	require.Equal(t,config.RequestHeaders.Get("User-Agent"),testEchoBody.Headers["user-agent"])
 }
