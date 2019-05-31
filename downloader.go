@@ -79,7 +79,7 @@ func (d *Downloader) AsyncRun() {
 	for {
 		n, err := in.Read(buff[:])
 		if n > 0 {
-			d.out.Write(buff[:n])
+			_, _ = d.out.Write(buff[:n])
 			d.completedLock.Lock()
 			d.completed += int64(n)
 			d.completedLock.Unlock()
@@ -92,7 +92,7 @@ func (d *Downloader) AsyncRun() {
 			break
 		}
 	}
-	d.Close()
+	_ = d.Close()
 	d.Done <- true
 }
 
@@ -116,10 +116,18 @@ func (d *Downloader) Completed() int64 {
 	return res
 }
 
-// Download returns an asynchronous downloader that will donwload the specified url
+// Download returns an asynchronous downloader that will download the specified url
 // in the specified file. A download resume is tried if a file shorter than the requested
 // url is already present.
 func Download(file string, url string, options ...DownloadOptions) (*Downloader, error) {
+	return DownloadWithConfig(file, url, Config{}, options...)
+}
+
+// DownloadWithConfig applies an additional configuration to the http client and
+// returns an asynchronous downloader that will download the specified url
+// in the specified file. A download resume is tried if a file shorter than the requested
+// url is already present.
+func DownloadWithConfig(file string, url string, config Config, options ...DownloadOptions) (*Downloader, error) {
 	noResume := false
 	for _, opt := range options {
 		if opt == NoResume {
@@ -127,6 +135,7 @@ func Download(file string, url string, options ...DownloadOptions) (*Downloader,
 		}
 	}
 	req, err := http.NewRequest("GET", url, nil)
+
 	if err != nil {
 		return nil, fmt.Errorf("setting up HTTP request: %s", err)
 	}
@@ -137,6 +146,15 @@ func Download(file string, url string, options ...DownloadOptions) (*Downloader,
 			completed = info.Size()
 			req.Header.Set("Range", fmt.Sprintf("bytes=%d-", completed))
 		}
+	}
+
+	// apply Config
+
+	// Sets the header entries associated with key to
+	// the single element value. It replaces any existing
+	// values associated with key.
+	for k := range config.RequestHeaders {
+		req.Header.Set(k, config.RequestHeaders.Get(k))
 	}
 
 	client := &http.Client{}
@@ -155,7 +173,7 @@ func Download(file string, url string, options ...DownloadOptions) (*Downloader,
 	}
 	f, err := os.OpenFile(file, flags, 0644)
 	if err != nil {
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		return nil, fmt.Errorf("opening %s for writing: %s", file, err)
 	}
 
