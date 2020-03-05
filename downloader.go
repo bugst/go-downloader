@@ -120,7 +120,7 @@ func (d *Downloader) Completed() int64 {
 // in the specified file. A download resume is tried if a file shorter than the requested
 // url is already present.
 func Download(file string, reqURL string, options ...DownloadOptions) (*Downloader, error) {
-	return DownloadWithConfig(file, reqURL, Config{}, options...)
+	return DownloadWithConfig(file, reqURL, GetDefaultConfig(), options...)
 }
 
 // DownloadWithConfig applies an additional configuration to the http client and
