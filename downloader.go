@@ -119,22 +119,22 @@ func (d *Downloader) Completed() int64 {
 // Download returns an asynchronous downloader that will download the specified url
 // in the specified file. A download resume is tried if a file shorter than the requested
 // url is already present.
-func Download(file string, url string, options ...DownloadOptions) (*Downloader, error) {
-	return DownloadWithConfig(file, url, Config{}, options...)
+func Download(file string, reqURL string, options ...DownloadOptions) (*Downloader, error) {
+	return DownloadWithConfig(file, reqURL, Config{}, options...)
 }
 
 // DownloadWithConfig applies an additional configuration to the http client and
 // returns an asynchronous downloader that will download the specified url
 // in the specified file. A download resume is tried if a file shorter than the requested
 // url is already present.
-func DownloadWithConfig(file string, url string, config Config, options ...DownloadOptions) (*Downloader, error) {
+func DownloadWithConfig(file string, reqURL string, config Config, options ...DownloadOptions) (*Downloader, error) {
 	noResume := false
 	for _, opt := range options {
 		if opt == NoResume {
 			noResume = true
 		}
 	}
-	req, err := http.NewRequest("GET", url, nil)
+	req, err := http.NewRequest("GET", reqURL, nil)
 
 	if err != nil {
 		return nil, fmt.Errorf("setting up HTTP request: %s", err)
@@ -178,7 +178,7 @@ func DownloadWithConfig(file string, url string, config Config, options ...Downl
 	}
 
 	d := &Downloader{
-		URL:       url,
+		URL:       reqURL,
 		Done:      make(chan bool),
 		resp:      resp,
 		out:       f,
