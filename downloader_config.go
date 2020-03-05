@@ -10,7 +10,8 @@ import (
 	"net/http"
 )
 
-// Downloader is an asynchronous downloader
+// Config contains the configuration for the downloader
 type Config struct {
-	RequestHeaders               http.Header
+	// RequestHeaders contains extra headers to add to the http request
+	RequestHeaders http.Header
 }
