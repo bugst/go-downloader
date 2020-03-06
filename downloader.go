@@ -162,7 +162,7 @@ func DownloadWithConfig(file string, reqURL string, config Config, options ...Do
 	if config.ProxyURL != "" {
 		proxy, err := url.Parse(config.ProxyURL)
 		if err != nil {
-			return nil, fmt.Errorf("inalid proxy %s: %s", config.ProxyURL, err)
+			return nil, fmt.Errorf("invalid proxy %s: %s", config.ProxyURL, err)
 		}
 		client.Transport = &http.Transport{
 			Proxy: http.ProxyURL(proxy),
