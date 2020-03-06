@@ -15,6 +15,10 @@ import (
 type Config struct {
 	// RequestHeaders contains extra headers to add to the http request
 	RequestHeaders http.Header
+
+	// ProxyURL is the URL for a caching proxy to use to perform the request
+	// or nil for no proxy
+	ProxyURL string
 }
 
 var defaultConfig Config = Config{}
