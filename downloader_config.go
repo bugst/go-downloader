@@ -17,7 +17,7 @@ type Config struct {
 	RequestHeaders http.Header
 
 	// ProxyURL is the URL for a caching proxy to use to perform the request
-	// or nil for no proxy
+	// or empty string for no proxy
 	ProxyURL string
 }
 
