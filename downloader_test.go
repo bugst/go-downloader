@@ -138,6 +138,16 @@ func TestErrorOnFileOpening(t *testing.T) {
 	require.Nil(t, d)
 }
 
+type roundTripper struct {
+	UserAgent string
+	transport http.Transport
+}
+
+func (r *roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	req.Header["User-Agent"] = []string{r.UserAgent}
+	return r.transport.RoundTrip(req)
+}
+
 // TestApplyUserAgentHeaderUsingConfig test uses the https://postman-echo.com/ service
 func TestApplyUserAgentHeaderUsingConfig(t *testing.T) {
 	type echoBody struct {
@@ -147,10 +157,11 @@ func TestApplyUserAgentHeaderUsingConfig(t *testing.T) {
 	tmpFile := makeTmpFile(t)
 	defer os.Remove(tmpFile)
 
+	httpClient := http.Client{
+		Transport: &roundTripper{UserAgent: "go-downloader / 0.0.0-test"},
+	}
 	config := Config{
-		RequestHeaders: http.Header{
-			"User-Agent": []string{"go-downloader / 0.0.0-test"},
-		},
+		HttpClient: httpClient,
 	}
 
 	d, err := DownloadWithConfig(tmpFile, "https://postman-echo.com/headers", config)
@@ -161,5 +172,5 @@ func TestApplyUserAgentHeaderUsingConfig(t *testing.T) {
 	require.NoError(t, err)
 	err = json.Unmarshal(body, &testEchoBody)
 	require.NoError(t, err)
- 	require.Equal(t,config.RequestHeaders.Get("User-Agent"),testEchoBody.Headers["user-agent"])
+	require.Equal(t, "go-downloader / 0.0.0-test", testEchoBody.Headers["user-agent"])
 }
