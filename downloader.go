@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"os"
 	"sync"
 	"time"
@@ -149,26 +148,7 @@ func DownloadWithConfig(file string, reqURL string, config Config, options ...Do
 		}
 	}
 
-	// apply Config
-
-	// Sets the header entries associated with key to
-	// the single element value. It replaces any existing
-	// values associated with key.
-	for k := range config.RequestHeaders {
-		req.Header.Set(k, config.RequestHeaders.Get(k))
-	}
-
-	client := &http.Client{}
-	if config.ProxyURL != "" {
-		proxy, err := url.Parse(config.ProxyURL)
-		if err != nil {
-			return nil, fmt.Errorf("invalid proxy %s: %s", config.ProxyURL, err)
-		}
-		client.Transport = &http.Transport{
-			Proxy: http.ProxyURL(proxy),
-		}
-	}
-	resp, err := client.Do(req)
+	resp, err := config.HttpClient.Do(req)
 	if err != nil {
 		return nil, err
 	}

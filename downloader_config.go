@@ -13,12 +13,7 @@ import (
 
 // Config contains the configuration for the downloader
 type Config struct {
-	// RequestHeaders contains extra headers to add to the http request
-	RequestHeaders http.Header
-
-	// ProxyURL is the URL for a caching proxy to use to perform the request
-	// or empty string for no proxy
-	ProxyURL string
+	HttpClient http.Client
 }
 
 var defaultConfig Config = Config{}
