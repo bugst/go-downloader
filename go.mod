@@ -1,4 +1,4 @@
-module go.bug.st/downloader
+module go.bug.st/downloader/v2
 
 go 1.12
 
