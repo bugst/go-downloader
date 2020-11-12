@@ -19,7 +19,7 @@ import (
 type Downloader struct {
 	URL           string
 	Done          chan bool
-	resp          *http.Response
+	Resp          *http.Response
 	out           *os.File
 	completed     int64
 	completedLock sync.Mutex
@@ -38,7 +38,7 @@ const (
 // Close the download
 func (d *Downloader) Close() error {
 	err1 := d.out.Close()
-	err2 := d.resp.Body.Close()
+	err2 := d.Resp.Body.Close()
 	if err1 != nil {
 		return fmt.Errorf("closing output file: %s", err1)
 	}
@@ -74,7 +74,7 @@ func (d *Downloader) RunAndPoll(poll func(current int64), interval time.Duration
 // AsyncRun starts the downloader copy-loop. This function is supposed to be run
 // on his own go routine because it sends a confirmation on the Done channel
 func (d *Downloader) AsyncRun() {
-	in := d.resp.Body
+	in := d.Resp.Body
 	buff := [4096]byte{}
 	for {
 		n, err := in.Read(buff[:])
@@ -170,7 +170,7 @@ func DownloadWithConfig(file string, reqURL string, config Config, options ...Do
 	d := &Downloader{
 		URL:       reqURL,
 		Done:      make(chan bool),
-		resp:      resp,
+		Resp:      resp,
 		out:       f,
 		completed: completed,
 		size:      resp.ContentLength + completed,
