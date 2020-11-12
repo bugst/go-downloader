@@ -168,7 +168,7 @@ func TestApplyUserAgentHeaderUsingConfig(t *testing.T) {
 	require.NoError(t, err)
 
 	testEchoBody := echoBody{}
-	body, err := ioutil.ReadAll(d.resp.Body)
+	body, err := ioutil.ReadAll(d.Resp.Body)
 	require.NoError(t, err)
 	err = json.Unmarshal(body, &testEchoBody)
 	require.NoError(t, err)
