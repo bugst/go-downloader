@@ -157,7 +157,7 @@ func DownloadWithConfig(file string, reqURL string, config Config, options ...Do
 
 	flags := os.O_WRONLY
 	if completed == 0 {
-		flags |= os.O_CREATE
+		flags |= os.O_CREATE | os.O_TRUNC
 	} else {
 		flags |= os.O_APPEND
 	}
