@@ -7,6 +7,7 @@
 package downloader
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -173,4 +174,48 @@ func TestApplyUserAgentHeaderUsingConfig(t *testing.T) {
 	err = json.Unmarshal(body, &testEchoBody)
 	require.NoError(t, err)
 	require.Equal(t, "go-downloader / 0.0.0-test", testEchoBody.Headers["user-agent"])
+}
+
+func TestContextCancelation(t *testing.T) {
+	slowHandler := func(w http.ResponseWriter, r *http.Request) {
+		for i := 0; i < 50; i++ {
+			fmt.Fprintf(w, "Hello %d\n", i)
+			w.(http.Flusher).Flush()
+			time.Sleep(100 * time.Millisecond)
+		}
+	}
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/slow", slowHandler)
+	server := &http.Server{Addr: ":8080", Handler: mux}
+	go func() {
+		server.ListenAndServe()
+		fmt.Println("Server stopped")
+	}()
+	// Wait for server start
+	time.Sleep(time.Second)
+
+	tmpFile := makeTmpFile(t)
+	defer os.Remove(tmpFile)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	d, err := DownloadWithConfigAndContext(ctx, tmpFile, "http://127.0.0.1:8080/slow", Config{})
+	require.NoError(t, err)
+
+	// Cancel in two seconds
+	go func() {
+		time.Sleep(2 * time.Second)
+		cancel()
+	}()
+
+	// Run slow download
+	max := int64(0)
+	err = d.RunAndPoll(func(curr int64) {
+		fmt.Println(curr)
+		max = curr
+	}, 100*time.Millisecond)
+	require.EqualError(t, err, "context canceled")
+	require.True(t, max < 400)
+
+	require.NoError(t, server.Shutdown(ctx))
 }
