@@ -7,6 +7,7 @@
 package downloader
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -128,13 +129,21 @@ func Download(file string, reqURL string, options ...DownloadOptions) (*Download
 // in the specified file. A download resume is tried if a file shorter than the requested
 // url is already present.
 func DownloadWithConfig(file string, reqURL string, config Config, options ...DownloadOptions) (*Downloader, error) {
+	return DownloadWithConfigAndContext(context.Background(), file, reqURL, config, options...)
+}
+
+// DownloadWithConfigAndContext applies an additional configuration to the http client and
+// returns an asynchronous downloader that will download the specified url
+// in the specified file. A download resume is tried if a file shorter than the requested
+// url is already present. The download can be cancelled using the provided context.
+func DownloadWithConfigAndContext(ctx context.Context, file string, reqURL string, config Config, options ...DownloadOptions) (*Downloader, error) {
 	noResume := false
 	for _, opt := range options {
 		if opt == NoResume {
 			noResume = true
 		}
 	}
-	req, err := http.NewRequest("GET", reqURL, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", reqURL, nil)
 
 	if err != nil {
 		return nil, fmt.Errorf("setting up HTTP request: %s", err)

@@ -7,9 +7,10 @@
 package downloader
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"os"
 	"testing"
@@ -19,7 +20,7 @@ import (
 )
 
 func makeTmpFile(t *testing.T) string {
-	tmp, err := ioutil.TempFile("", "")
+	tmp, err := os.CreateTemp("", "")
 	require.NoError(t, err)
 	require.NoError(t, tmp.Close())
 	tmpFile := tmp.Name()
@@ -39,9 +40,9 @@ func TestDownload(t *testing.T) {
 	require.Equal(t, int64(8052), d.Completed())
 	require.Equal(t, int64(8052), d.Size())
 
-	file1, err := ioutil.ReadFile("testdata/test.txt")
+	file1, err := os.ReadFile("testdata/test.txt")
 	require.NoError(t, err)
-	file2, err := ioutil.ReadFile(tmpFile)
+	file2, err := os.ReadFile(tmpFile)
 	require.NoError(t, err)
 	require.Equal(t, file1, file2)
 }
@@ -50,9 +51,9 @@ func TestResume(t *testing.T) {
 	tmpFile := makeTmpFile(t)
 	defer os.Remove(tmpFile)
 
-	part, err := ioutil.ReadFile("testdata/test.txt.part")
+	part, err := os.ReadFile("testdata/test.txt.part")
 	require.NoError(t, err)
-	err = ioutil.WriteFile(tmpFile, part, 0644)
+	err = os.WriteFile(tmpFile, part, 0644)
 	require.NoError(t, err)
 
 	d, err := Download(tmpFile, "https://go.bug.st/test.txt")
@@ -63,9 +64,9 @@ func TestResume(t *testing.T) {
 	require.Equal(t, int64(8052), d.Completed())
 	require.Equal(t, int64(8052), d.Size())
 
-	file1, err := ioutil.ReadFile("testdata/test.txt")
+	file1, err := os.ReadFile("testdata/test.txt")
 	require.NoError(t, err)
-	file2, err := ioutil.ReadFile(tmpFile)
+	file2, err := os.ReadFile(tmpFile)
 	require.NoError(t, err)
 	require.Equal(t, file1, file2)
 }
@@ -74,9 +75,9 @@ func TestNoResume(t *testing.T) {
 	tmpFile := makeTmpFile(t)
 	defer os.Remove(tmpFile)
 
-	part, err := ioutil.ReadFile("testdata/test.txt.part")
+	part, err := os.ReadFile("testdata/test.txt.part")
 	require.NoError(t, err)
-	err = ioutil.WriteFile(tmpFile, part, 0644)
+	err = os.WriteFile(tmpFile, part, 0644)
 	require.NoError(t, err)
 
 	d, err := Download(tmpFile, "https://go.bug.st/test.txt", NoResume)
@@ -87,9 +88,9 @@ func TestNoResume(t *testing.T) {
 	require.Equal(t, int64(8052), d.Completed())
 	require.Equal(t, int64(8052), d.Size())
 
-	file1, err := ioutil.ReadFile("testdata/test.txt")
+	file1, err := os.ReadFile("testdata/test.txt")
 	require.NoError(t, err)
-	file2, err := ioutil.ReadFile(tmpFile)
+	file2, err := os.ReadFile(tmpFile)
 	require.NoError(t, err)
 	require.Equal(t, file1, file2)
 }
@@ -132,7 +133,7 @@ func TestErrorOnFileOpening(t *testing.T) {
 	tmpFile := makeTmpFile(t)
 	defer os.Remove(tmpFile)
 
-	require.NoError(t, ioutil.WriteFile(tmpFile, []byte{}, 0000))
+	require.NoError(t, os.WriteFile(tmpFile, []byte{}, 0000))
 	d, err := Download(tmpFile, "http://go.bug.st/test.txt")
 	require.Error(t, err)
 	require.Nil(t, d)
@@ -168,9 +169,53 @@ func TestApplyUserAgentHeaderUsingConfig(t *testing.T) {
 	require.NoError(t, err)
 
 	testEchoBody := echoBody{}
-	body, err := ioutil.ReadAll(d.Resp.Body)
+	body, err := io.ReadAll(d.Resp.Body)
 	require.NoError(t, err)
 	err = json.Unmarshal(body, &testEchoBody)
 	require.NoError(t, err)
 	require.Equal(t, "go-downloader / 0.0.0-test", testEchoBody.Headers["user-agent"])
+}
+
+func TestContextCancelation(t *testing.T) {
+	slowHandler := func(w http.ResponseWriter, r *http.Request) {
+		for i := 0; i < 50; i++ {
+			fmt.Fprintf(w, "Hello %d\n", i)
+			w.(http.Flusher).Flush()
+			time.Sleep(100 * time.Millisecond)
+		}
+	}
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/slow", slowHandler)
+	server := &http.Server{Addr: ":8080", Handler: mux}
+	go func() {
+		server.ListenAndServe()
+		fmt.Println("Server stopped")
+	}()
+	// Wait for server start
+	time.Sleep(time.Second)
+
+	tmpFile := makeTmpFile(t)
+	defer os.Remove(tmpFile)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	d, err := DownloadWithConfigAndContext(ctx, tmpFile, "http://127.0.0.1:8080/slow", Config{})
+	require.NoError(t, err)
+
+	// Cancel in two seconds
+	go func() {
+		time.Sleep(2 * time.Second)
+		cancel()
+	}()
+
+	// Run slow download
+	max := int64(0)
+	err = d.RunAndPoll(func(curr int64) {
+		fmt.Println(curr)
+		max = curr
+	}, 100*time.Millisecond)
+	require.EqualError(t, err, "context canceled")
+	require.True(t, max < 400)
+
+	require.NoError(t, server.Shutdown(ctx))
 }
