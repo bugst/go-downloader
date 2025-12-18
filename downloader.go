@@ -12,6 +12,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"slices"
 	"sync"
 	"time"
 )
@@ -137,14 +138,9 @@ func DownloadWithConfig(file string, reqURL string, config Config, options ...Do
 // in the specified file. A download resume is tried if a file shorter than the requested
 // url is already present. The download can be cancelled using the provided context.
 func DownloadWithConfigAndContext(ctx context.Context, file string, reqURL string, config Config, options ...DownloadOptions) (*Downloader, error) {
-	noResume := false
-	for _, opt := range options {
-		if opt == NoResume {
-			noResume = true
-		}
-	}
-	req, err := http.NewRequestWithContext(ctx, "GET", reqURL, nil)
+	noResume := slices.Contains(options, NoResume)
 
+	req, err := http.NewRequestWithContext(ctx, "GET", reqURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("setting up HTTP request: %s", err)
 	}
