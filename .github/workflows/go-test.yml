@@ -28,4 +28,5 @@ jobs:
           go-version-file: go.mod
 
       - name: Run tests
+        shell: bash
         run: go test -race -coverprofile=coverage.txt -covermode=atomic
