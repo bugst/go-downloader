@@ -73,6 +73,26 @@ func TestResume(t *testing.T) {
 	require.Equal(t, file1, file2)
 }
 
+func TestResumeOnAlreadyCompletedFile(t *testing.T) {
+	tmpFile := makeTmpFile(t)
+
+	full, err := os.ReadFile("testdata/test.txt")
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(tmpFile, full, 0644))
+
+	d, err := Download(tmpFile, "https://go.bug.st/test.txt")
+	require.NoError(t, err)
+	require.Equal(t, int64(8052), d.Completed())
+	require.Equal(t, int64(8052), d.Size())
+	require.NoError(t, d.Run())
+	require.Equal(t, int64(8052), d.Completed())
+
+	// Check file content is unchanged
+	file2, err := os.ReadFile(tmpFile)
+	require.NoError(t, err)
+	require.Equal(t, full, file2)
+}
+
 func TestNoResume(t *testing.T) {
 	tmpFile := makeTmpFile(t)
 
