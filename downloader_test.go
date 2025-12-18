@@ -13,6 +13,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -25,12 +26,14 @@ func makeTmpFile(t *testing.T) string {
 	require.NoError(t, tmp.Close())
 	tmpFile := tmp.Name()
 	require.NoError(t, os.Remove(tmpFile))
+	t.Cleanup(func() {
+		os.Remove(tmpFile)
+	})
 	return tmpFile
 }
 
 func TestDownload(t *testing.T) {
 	tmpFile := makeTmpFile(t)
-	defer os.Remove(tmpFile)
 
 	d, err := Download(tmpFile, "https://go.bug.st/test.txt")
 	require.NoError(t, err)
@@ -49,7 +52,6 @@ func TestDownload(t *testing.T) {
 
 func TestResume(t *testing.T) {
 	tmpFile := makeTmpFile(t)
-	defer os.Remove(tmpFile)
 
 	part, err := os.ReadFile("testdata/test.txt.part")
 	require.NoError(t, err)
@@ -73,7 +75,6 @@ func TestResume(t *testing.T) {
 
 func TestNoResume(t *testing.T) {
 	tmpFile := makeTmpFile(t)
-	defer os.Remove(tmpFile)
 
 	part, err := os.ReadFile("testdata/test.txt.part")
 	require.NoError(t, err)
@@ -97,7 +98,6 @@ func TestNoResume(t *testing.T) {
 
 func TestInvalidRequest(t *testing.T) {
 	tmpFile := makeTmpFile(t)
-	defer os.Remove(tmpFile)
 
 	d, err := Download(tmpFile, "asd://go.bug.st/test.txt")
 	require.Error(t, err)
@@ -112,7 +112,6 @@ func TestInvalidRequest(t *testing.T) {
 
 func TestRunAndPool(t *testing.T) {
 	tmpFile := makeTmpFile(t)
-	defer os.Remove(tmpFile)
 
 	d, err := Download(tmpFile, "https://downloads.arduino.cc/cores/avr-1.6.20.tar.bz2")
 	require.NoError(t, err)
@@ -131,7 +130,6 @@ func TestRunAndPool(t *testing.T) {
 
 func TestErrorOnFileOpening(t *testing.T) {
 	tmpFile := makeTmpFile(t)
-	defer os.Remove(tmpFile)
 
 	require.NoError(t, os.WriteFile(tmpFile, []byte{}, 0000))
 	d, err := Download(tmpFile, "http://go.bug.st/test.txt")
@@ -196,7 +194,6 @@ func TestContextCancelation(t *testing.T) {
 	time.Sleep(time.Second)
 
 	tmpFile := makeTmpFile(t)
-	defer os.Remove(tmpFile)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	d, err := DownloadWithConfigAndContext(ctx, tmpFile, "http://127.0.0.1:8080/slow", Config{})
