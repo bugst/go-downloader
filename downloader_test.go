@@ -129,10 +129,8 @@ func TestRunAndPool(t *testing.T) {
 }
 
 func TestErrorOnFileOpening(t *testing.T) {
-	tmpFile := makeTmpFile(t)
-
-	require.NoError(t, os.WriteFile(tmpFile, []byte{}, 0000))
-	d, err := Download(tmpFile, "http://go.bug.st/test.txt")
+	unaccessibleFile := filepath.Join(os.TempDir(), "nonexistentdir", "test.txt")
+	d, err := Download(unaccessibleFile, "http://go.bug.st/test.txt")
 	require.Error(t, err)
 	require.Nil(t, d)
 }
