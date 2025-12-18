@@ -140,13 +140,27 @@ func DownloadWithConfig(file string, reqURL string, config Config, options ...Do
 func DownloadWithConfigAndContext(ctx context.Context, file string, reqURL string, config Config, options ...DownloadOptions) (*Downloader, error) {
 	noResume := slices.Contains(options, NoResume)
 
+	// Perform a HEAD call to gather information about the server capabilities
+	serverAcceptsRanges := false
+	var size int64
+	if headReq, err := http.NewRequestWithContext(ctx, "HEAD", reqURL, nil); err != nil {
+		return nil, fmt.Errorf("setting up HEAD request: %s", err)
+	} else if headResp, err := config.HttpClient.Do(headReq); err != nil {
+		return nil, fmt.Errorf("performing HEAD request: %s", err)
+	} else {
+		serverAcceptsRanges = (headResp.Header.Get("Accept-Ranges") == "bytes")
+		size = headResp.ContentLength
+		_ = headResp.Body.Close()
+	}
+
+	// Setup the actual GET request
 	req, err := http.NewRequestWithContext(ctx, "GET", reqURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("setting up HTTP request: %s", err)
 	}
 
 	var completed int64
-	if !noResume {
+	if !noResume && serverAcceptsRanges {
 		if info, err := os.Stat(file); err == nil {
 			completed = info.Size()
 			req.Header.Set("Range", fmt.Sprintf("bytes=%d-", completed))
@@ -178,7 +192,7 @@ func DownloadWithConfigAndContext(ctx context.Context, file string, reqURL strin
 		Resp:      resp,
 		out:       f,
 		completed: completed,
-		size:      resp.ContentLength + completed,
+		size:      size,
 	}
 	return d, nil
 }
