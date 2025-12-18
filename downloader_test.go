@@ -174,7 +174,7 @@ func TestApplyUserAgentHeaderUsingConfig(t *testing.T) {
 
 func TestContextCancelation(t *testing.T) {
 	slowHandler := func(w http.ResponseWriter, r *http.Request) {
-		for i := 0; i < 50; i++ {
+		for i := range 50 {
 			fmt.Fprintf(w, "Hello %d\n", i)
 			w.(http.Flusher).Flush()
 			time.Sleep(100 * time.Millisecond)
@@ -185,8 +185,8 @@ func TestContextCancelation(t *testing.T) {
 	mux.HandleFunc("/slow", slowHandler)
 	server := &http.Server{Addr: ":8080", Handler: mux}
 	go func() {
-		server.ListenAndServe()
-		fmt.Println("Server stopped")
+		err := server.ListenAndServe()
+		fmt.Println("Server stopped with err:", err)
 	}()
 	// Wait for server start
 	time.Sleep(time.Second)
@@ -198,6 +198,7 @@ func TestContextCancelation(t *testing.T) {
 	require.NoError(t, err)
 
 	// Cancel in two seconds
+	startTime := time.Now()
 	go func() {
 		time.Sleep(2 * time.Second)
 		cancel()
@@ -206,11 +207,11 @@ func TestContextCancelation(t *testing.T) {
 	// Run slow download
 	max := int64(0)
 	err = d.RunAndPoll(func(curr int64) {
-		fmt.Println(curr)
+		fmt.Println("Downloaded", curr, "bytes. Elapsed:", time.Since(startTime))
 		max = curr
 	}, 100*time.Millisecond)
 	require.EqualError(t, err, "context canceled")
 	require.True(t, max < 400)
 
-	require.NoError(t, server.Shutdown(ctx))
+	require.NoError(t, server.Shutdown(context.Background()))
 }
