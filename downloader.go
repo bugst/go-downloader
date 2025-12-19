@@ -88,6 +88,13 @@ func (d *Downloader) AsyncRun() {
 func (d *Downloader) Run() error {
 	defer close(d.Done)
 
+	d.completedLock.Lock()
+	skip := (d.completed == d.size)
+	d.completedLock.Unlock()
+	if skip {
+		return d.Error()
+	}
+
 	in := d.Resp.Body
 	buff := [4096]byte{}
 	for {
@@ -140,45 +147,66 @@ func DownloadWithConfig(file string, reqURL string, config Config, options ...Do
 
 // DownloadWithConfigAndContext applies an additional configuration to the http client and
 // returns an asynchronous downloader that will download the specified url
-// in the specified file. A download resume is tried if a file shorter than the requested
-// url is already present. The download can be cancelled using the provided context.
+// in the specified file.
+// A previous download is resumed if the local file is shorter than the remote file.
+// The download is skipped if the local file has the same size of the renote file.
+// The download is restarted from scratch if the local file is larger than the remote file.
 func DownloadWithConfigAndContext(ctx context.Context, file string, reqURL string, config Config, options ...DownloadOptions) (*Downloader, error) {
-	noResume := slices.Contains(options, NoResume)
+	clientCanResume := !slices.Contains(options, NoResume)
 
-	// Perform a HEAD call to gather information about the server capabilities
-	serverAcceptsRanges := false
-	var size int64
-	if headReq, err := http.NewRequestWithContext(ctx, "HEAD", reqURL, nil); err != nil {
-		return nil, fmt.Errorf("setting up HEAD request: %s", err)
-	} else if headResp, err := config.HttpClient.Do(headReq); err != nil {
-		return nil, fmt.Errorf("performing HEAD request: %s", err)
-	} else {
-		serverAcceptsRanges = (headResp.Header.Get("Accept-Ranges") == "bytes")
-		size = headResp.ContentLength
-		_ = headResp.Body.Close()
+	// Gather information about local file
+	var localSize int64
+	if info, err := os.Stat(file); err == nil {
+		localSize = info.Size()
 	}
 
-	// Setup the actual GET request
+	// Perform a HEAD call to gather information about the server capabilities and remote file
+	headReq, err := http.NewRequestWithContext(ctx, "HEAD", reqURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("setting up HEAD request: %s", err)
+	}
+	headResp, err := config.HttpClient.Do(headReq)
+	if err != nil {
+		return nil, fmt.Errorf("performing HEAD request: %s", err)
+	}
+	serverCanResume := (headResp.Header.Get("Accept-Ranges") == "bytes")
+	remoteSize := headResp.ContentLength
+	_, _ = io.Copy(io.Discard, headResp.Body)
+	_ = headResp.Body.Close()
+
+	// If we are allowed to resume a download, check the local file size and decide how to proceed
+	var completed int64
+	if clientCanResume {
+		if localSize == remoteSize {
+			// Size matches: assume the file is already downloaded
+			return &Downloader{
+				URL:       reqURL,
+				Done:      make(chan struct{}),
+				Resp:      headResp,
+				completed: remoteSize,
+				size:      remoteSize,
+			}, nil
+		}
+		if localSize < remoteSize {
+			// Local file is smaller than remote file: resume download
+			completed = localSize
+		}
+	}
+
+	// Perform the actual GET request
 	req, err := http.NewRequestWithContext(ctx, "GET", reqURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("setting up HTTP request: %s", err)
 	}
-
-	var completed int64
-	if !noResume && serverAcceptsRanges {
-		if info, err := os.Stat(file); err == nil {
-			completed = info.Size()
-			req.Header.Set("Range", fmt.Sprintf("bytes=%d-", completed))
-		}
+	if clientCanResume && serverCanResume && completed > 0 {
+		req.Header.Set("Range", fmt.Sprintf("bytes=%d-", completed))
 	}
-
 	resp, err := config.HttpClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
 
-	// TODO: if file size == header size return nil, nil
-
+	// Open output file
 	flags := os.O_WRONLY
 	if completed == 0 {
 		flags |= os.O_CREATE | os.O_TRUNC
@@ -191,13 +219,12 @@ func DownloadWithConfigAndContext(ctx context.Context, file string, reqURL strin
 		return nil, fmt.Errorf("opening %s for writing: %s", file, err)
 	}
 
-	d := &Downloader{
+	return &Downloader{
 		URL:       reqURL,
 		Done:      make(chan struct{}),
 		Resp:      resp,
 		out:       f,
 		completed: completed,
-		size:      size,
-	}
-	return d, nil
+		size:      remoteSize,
+	}, nil
 }
