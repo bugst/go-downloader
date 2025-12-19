@@ -198,7 +198,8 @@ func DownloadWithConfigAndContext(ctx context.Context, file string, reqURL strin
 	if err != nil {
 		return nil, fmt.Errorf("setting up HTTP request: %s", err)
 	}
-	if clientCanResume && serverCanResume && completed > 0 {
+	resumeDownload := clientCanResume && serverCanResume && completed > 0
+	if resumeDownload {
 		req.Header.Set("Range", fmt.Sprintf("bytes=%d-", completed))
 	}
 	resp, err := config.HttpClient.Do(req)
@@ -208,10 +209,10 @@ func DownloadWithConfigAndContext(ctx context.Context, file string, reqURL strin
 
 	// Open output file
 	flags := os.O_WRONLY
-	if completed == 0 {
-		flags |= os.O_CREATE | os.O_TRUNC
-	} else {
+	if resumeDownload {
 		flags |= os.O_APPEND
+	} else {
+		flags |= os.O_CREATE | os.O_TRUNC
 	}
 	f, err := os.OpenFile(file, flags, 0644)
 	if err != nil {
