@@ -20,7 +20,7 @@ import (
 // Downloader is an asynchronous downloader
 type Downloader struct {
 	URL           string
-	Done          chan bool
+	Done          chan struct{}
 	Resp          *http.Response
 	out           *os.File
 	completed     int64
@@ -74,8 +74,20 @@ func (d *Downloader) RunAndPoll(poll func(current int64), interval time.Duration
 }
 
 // AsyncRun starts the downloader copy-loop. This function is supposed to be run
-// on his own go routine because it sends a confirmation on the Done channel
+// on his own goroutine, it will close the Done channel when the download is completed
+// or an error occurs.
+//
+// Deprecated: use Run instead.
 func (d *Downloader) AsyncRun() {
+	d.Run()
+}
+
+// Run starts the downloader and waits until it completes the download.
+// This method can be run in a goroutine to perform an asynchronous download;
+// it will close the Done channel when the download is completed or an error occurs.
+func (d *Downloader) Run() error {
+	defer close(d.Done)
+
 	in := d.Resp.Body
 	buff := [4096]byte{}
 	for {
@@ -95,13 +107,6 @@ func (d *Downloader) AsyncRun() {
 		}
 	}
 	_ = d.Close()
-	d.Done <- true
-}
-
-// Run starts the downloader and waits until it completes the download.
-func (d *Downloader) Run() error {
-	go d.AsyncRun()
-	<-d.Done
 	return d.Error()
 }
 
@@ -188,7 +193,7 @@ func DownloadWithConfigAndContext(ctx context.Context, file string, reqURL strin
 
 	d := &Downloader{
 		URL:       reqURL,
-		Done:      make(chan bool),
+		Done:      make(chan struct{}),
 		Resp:      resp,
 		out:       f,
 		completed: completed,
