@@ -4,7 +4,7 @@
 // license that can be found in the LICENSE file.
 //
 
-package downloader
+package downloader_test
 
 import (
 	"context"
@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"go.bug.st/downloader/v2"
 )
 
 func makeTmpFile(t *testing.T) string {
@@ -35,7 +36,7 @@ func makeTmpFile(t *testing.T) string {
 func TestDownload(t *testing.T) {
 	tmpFile := makeTmpFile(t)
 
-	d, err := Download(tmpFile, "https://go.bug.st/test.txt")
+	d, err := downloader.Download(tmpFile, "https://go.bug.st/test.txt")
 	require.NoError(t, err)
 	require.Equal(t, int64(0), d.Completed())
 	require.Equal(t, int64(8052), d.Size())
@@ -58,7 +59,7 @@ func TestResume(t *testing.T) {
 	err = os.WriteFile(tmpFile, part, 0644)
 	require.NoError(t, err)
 
-	d, err := Download(tmpFile, "https://go.bug.st/test.txt")
+	d, err := downloader.Download(tmpFile, "https://go.bug.st/test.txt")
 	require.Equal(t, int64(3506), d.Completed())
 	require.Equal(t, int64(8052), d.Size())
 	require.NoError(t, err)
@@ -80,7 +81,7 @@ func TestResumeOnAlreadyCompletedFile(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(tmpFile, full, 0644))
 
-	d, err := Download(tmpFile, "https://go.bug.st/test.txt")
+	d, err := downloader.Download(tmpFile, "https://go.bug.st/test.txt")
 	require.NoError(t, err)
 	require.Equal(t, int64(8052), d.Completed())
 	require.Equal(t, int64(8052), d.Size())
@@ -101,7 +102,7 @@ func TestNoResume(t *testing.T) {
 	err = os.WriteFile(tmpFile, part, 0644)
 	require.NoError(t, err)
 
-	d, err := Download(tmpFile, "https://go.bug.st/test.txt", NoResume)
+	d, err := downloader.Download(tmpFile, "https://go.bug.st/test.txt", downloader.NoResume)
 	require.Equal(t, int64(0), d.Completed())
 	require.Equal(t, int64(8052), d.Size())
 	require.NoError(t, err)
@@ -119,12 +120,12 @@ func TestNoResume(t *testing.T) {
 func TestInvalidRequest(t *testing.T) {
 	tmpFile := makeTmpFile(t)
 
-	d, err := Download(tmpFile, "asd://go.bug.st/test.txt")
+	d, err := downloader.Download(tmpFile, "asd://go.bug.st/test.txt")
 	require.Error(t, err)
 	require.Nil(t, d)
 	fmt.Println("ERROR:", err)
 
-	d, err = Download(tmpFile, "://")
+	d, err = downloader.Download(tmpFile, "://")
 	require.Error(t, err)
 	require.Nil(t, d)
 	fmt.Println("ERROR:", err)
@@ -133,7 +134,7 @@ func TestInvalidRequest(t *testing.T) {
 func TestRunAndPool(t *testing.T) {
 	tmpFile := makeTmpFile(t)
 
-	d, err := Download(tmpFile, "https://downloads.arduino.cc/cores/avr-1.6.20.tar.bz2")
+	d, err := downloader.Download(tmpFile, "https://downloads.arduino.cc/cores/avr-1.6.20.tar.bz2")
 	require.NoError(t, err)
 	prevCurr := int64(0)
 	callCount := 0
@@ -150,7 +151,7 @@ func TestRunAndPool(t *testing.T) {
 
 func TestErrorOnFileOpening(t *testing.T) {
 	unaccessibleFile := filepath.Join(os.TempDir(), "nonexistentdir", "test.txt")
-	d, err := Download(unaccessibleFile, "http://go.bug.st/test.txt")
+	d, err := downloader.Download(unaccessibleFile, "http://go.bug.st/test.txt")
 	require.Error(t, err)
 	require.Nil(t, d)
 }
@@ -177,11 +178,11 @@ func TestApplyUserAgentHeaderUsingConfig(t *testing.T) {
 	httpClient := http.Client{
 		Transport: &roundTripper{UserAgent: "go-downloader / 0.0.0-test"},
 	}
-	config := Config{
+	config := downloader.Config{
 		HttpClient: httpClient,
 	}
 
-	d, err := DownloadWithConfig(tmpFile, "https://postman-echo.com/headers", config)
+	d, err := downloader.DownloadWithConfig(tmpFile, "https://postman-echo.com/headers", config)
 	require.NoError(t, err)
 
 	testEchoBody := echoBody{}
@@ -214,7 +215,7 @@ func TestContextCancelation(t *testing.T) {
 	tmpFile := makeTmpFile(t)
 
 	ctx, cancel := context.WithCancel(context.Background())
-	d, err := DownloadWithConfigAndContext(ctx, tmpFile, "http://127.0.0.1:8080/slow", Config{})
+	d, err := downloader.DownloadWithConfigAndContext(ctx, tmpFile, "http://127.0.0.1:8080/slow", downloader.Config{})
 	require.NoError(t, err)
 
 	// Cancel in two seconds
