@@ -50,7 +50,7 @@ func (d *Downloader) Close() error {
 	return nil
 }
 
-// Size return the size of the download
+// Size return the size of the download (or -1 if the server doesn't provide it)
 func (d *Downloader) Size() int64 {
 	return d.size
 }
@@ -169,8 +169,8 @@ func DownloadWithConfigAndContext(ctx context.Context, file string, reqURL strin
 	if err != nil {
 		return nil, fmt.Errorf("performing HEAD request: %s", err)
 	}
-	serverCanResume := (headResp.Header.Get("Accept-Ranges") == "bytes")
-	remoteSize := headResp.ContentLength
+	remoteSize := headResp.ContentLength // -1 if server doesn't send Content-Length
+	serverCanResume := (headResp.Header.Get("Accept-Ranges") == "bytes") && (remoteSize != -1)
 	_, _ = io.Copy(io.Discard, headResp.Body)
 	_ = headResp.Body.Close()
 
@@ -189,6 +189,7 @@ func DownloadWithConfigAndContext(ctx context.Context, file string, reqURL strin
 		}
 		if localSize < remoteSize {
 			// Local file is smaller than remote file: resume download
+			// Remote size is unknown: resume download anyway
 			completed = localSize
 		}
 	}
