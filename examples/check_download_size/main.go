@@ -11,7 +11,7 @@ import (
 	"log"
 	"net/http"
 
-	"go.bug.st/downloader/v2"
+	"go.bug.st/downloader/v3"
 )
 
 func main() {
