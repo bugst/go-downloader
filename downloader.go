@@ -29,16 +29,14 @@ type Downloader struct {
 }
 
 // Close the download
-func (d *Downloader) Close() error {
-	err1 := d.out.Close()
-	err2 := d.Resp.Body.Close()
-	if err1 != nil {
-		return fmt.Errorf("closing output file: %s", err1)
+func (d *Downloader) close() {
+	if d.out != nil {
+		d.out.Close()
 	}
-	if err2 != nil {
-		return fmt.Errorf("closing input stream: %s", err2)
+	if d.Resp != nil {
+		d.Resp.Body.Close()
 	}
-	return nil
+	close(d.Done)
 }
 
 // Size return the size of the download (or -1 if the server doesn't provide it)
@@ -68,7 +66,7 @@ func (d *Downloader) RunAndPoll(poll func(current int64), interval time.Duration
 // This method can be run in a goroutine to perform an asynchronous download;
 // it will close the Done channel when the download is completed or an error occurs.
 func (d *Downloader) Run() error {
-	defer close(d.Done)
+	defer d.close()
 
 	d.completedLock.Lock()
 	skip := (d.completed == d.size)
@@ -95,7 +93,6 @@ func (d *Downloader) Run() error {
 			break
 		}
 	}
-	_ = d.Close()
 	return d.Error()
 }
 
