@@ -162,8 +162,15 @@ func DownloadWithConfigAndContext(ctx context.Context, file string, reqURL strin
 	}
 	remoteSize := headResp.ContentLength // -1 if server doesn't send Content-Length
 	serverCanResume := (headResp.Header.Get("Accept-Ranges") == "bytes") && (remoteSize != -1)
+	var acceptError error
+	if config.AcceptFunc != nil {
+		acceptError = config.AcceptFunc(headResp)
+	}
 	_, _ = io.Copy(io.Discard, headResp.Body)
 	_ = headResp.Body.Close()
+	if acceptError != nil {
+		return nil, acceptError
+	}
 
 	// If we are allowed to resume a download, check the local file size and decide how to proceed
 	var completed int64
