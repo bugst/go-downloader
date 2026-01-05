@@ -102,7 +102,9 @@ func TestNoResume(t *testing.T) {
 	err = os.WriteFile(tmpFile, part, 0644)
 	require.NoError(t, err)
 
-	d, err := downloader.Download(tmpFile, "https://go.bug.st/test.txt", downloader.NoResume)
+	d, err := downloader.DownloadWithConfig(tmpFile, "https://go.bug.st/test.txt", downloader.Config{
+		DoNotResumeDownload: true,
+	})
 	require.Equal(t, int64(0), d.Completed())
 	require.Equal(t, int64(8052), d.Size())
 	require.NoError(t, err)
