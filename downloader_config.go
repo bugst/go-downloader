@@ -17,6 +17,10 @@ type Config struct {
 	HttpClient http.Client
 	// DoNotResumeDownload set to true to disallow resuming downloads.
 	DoNotResumeDownload bool
+	// AcceptFunc is an optional function that will be called
+	// when the HTTP HEAD request is done, before starting the download.
+	// If the function returns an error, the download is aborted.
+	AcceptFunc func(head *http.Response) error
 }
 
 var defaultConfig Config = Config{}
