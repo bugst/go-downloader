@@ -18,7 +18,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-	"go.bug.st/downloader/v2"
+	"go.bug.st/downloader/v3"
 )
 
 func makeTmpFile(t *testing.T) string {
