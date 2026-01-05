@@ -17,6 +17,8 @@ type Config struct {
 	HttpClient http.Client
 	// DoNotResumeDownload set to true to disallow resuming downloads.
 	DoNotResumeDownload bool
+	// ExtraHeaders to add to the HTTP requests.
+	ExtraHeaders map[string]string
 	// AcceptFunc is an optional function that will be called
 	// when the HTTP HEAD request is done, before starting the download.
 	// If the function returns an error, the download is aborted.

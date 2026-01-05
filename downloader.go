@@ -156,6 +156,11 @@ func DownloadWithConfigAndContext(ctx context.Context, file string, reqURL strin
 	if err != nil {
 		return nil, fmt.Errorf("setting up HEAD request: %s", err)
 	}
+	if config.ExtraHeaders != nil {
+		for k, v := range config.ExtraHeaders {
+			headReq.Header.Set(k, v)
+		}
+	}
 	headResp, err := config.HttpClient.Do(headReq)
 	if err != nil {
 		return nil, fmt.Errorf("performing HEAD request: %s", err)
@@ -196,6 +201,11 @@ func DownloadWithConfigAndContext(ctx context.Context, file string, reqURL strin
 	req, err := http.NewRequestWithContext(ctx, "GET", reqURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("setting up HTTP request: %s", err)
+	}
+	if config.ExtraHeaders != nil {
+		for k, v := range config.ExtraHeaders {
+			req.Header.Set(k, v)
+		}
 	}
 	resumeDownload := clientCanResume && serverCanResume && completed > 0
 	if resumeDownload {
