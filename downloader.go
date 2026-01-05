@@ -12,7 +12,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"slices"
 	"sync"
 	"time"
 )
@@ -28,14 +27,6 @@ type Downloader struct {
 	size          int64
 	err           error
 }
-
-// DownloadOptions are optional flags that can be passed to Download function
-type DownloadOptions int
-
-const (
-	// NoResume will not try to resume a partial download
-	NoResume DownloadOptions = iota
-)
 
 // Close the download
 func (d *Downloader) Close() error {
@@ -133,26 +124,26 @@ func (d *Downloader) Completed() int64 {
 // Download returns an asynchronous downloader that will download the specified url
 // in the specified file. A download resume is tried if a file shorter than the requested
 // url is already present.
-func Download(file string, reqURL string, options ...DownloadOptions) (*Downloader, error) {
-	return DownloadWithConfig(file, reqURL, GetDefaultConfig(), options...)
+func Download(file string, reqURL string) (*Downloader, error) {
+	return DownloadWithConfig(file, reqURL, GetDefaultConfig())
 }
 
 // DownloadWithConfig applies an additional configuration to the http client and
 // returns an asynchronous downloader that will download the specified url
 // in the specified file. A download resume is tried if a file shorter than the requested
 // url is already present.
-func DownloadWithConfig(file string, reqURL string, config Config, options ...DownloadOptions) (*Downloader, error) {
-	return DownloadWithConfigAndContext(context.Background(), file, reqURL, config, options...)
+func DownloadWithConfig(file string, reqURL string, config Config) (*Downloader, error) {
+	return DownloadWithConfigAndContext(context.Background(), file, reqURL, config)
 }
 
 // DownloadWithConfigAndContext applies an additional configuration to the http client and
 // returns an asynchronous downloader that will download the specified url
 // in the specified file.
 // A previous download is resumed if the local file is shorter than the remote file.
-// The download is skipped if the local file has the same size of the renote file.
+// The download is skipped if the local file has the same size of the remote file.
 // The download is restarted from scratch if the local file is larger than the remote file.
-func DownloadWithConfigAndContext(ctx context.Context, file string, reqURL string, config Config, options ...DownloadOptions) (*Downloader, error) {
-	clientCanResume := !slices.Contains(options, NoResume)
+func DownloadWithConfigAndContext(ctx context.Context, file string, reqURL string, config Config) (*Downloader, error) {
+	clientCanResume := !config.DoNotResumeDownload
 
 	// Gather information about local file
 	var localSize int64

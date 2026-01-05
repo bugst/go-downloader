@@ -13,7 +13,10 @@ import (
 
 // Config contains the configuration for the downloader
 type Config struct {
+	// HttpClient to use to perform HTTP requests
 	HttpClient http.Client
+	// DoNotResumeDownload set to true to disallow resuming downloads.
+	DoNotResumeDownload bool
 }
 
 var defaultConfig Config = Config{}
