@@ -52,7 +52,7 @@ func (d *Downloader) RunAndPoll(poll func(current int64), interval time.Duration
 	t := time.NewTicker(interval)
 	defer t.Stop()
 
-	go d.AsyncRun()
+	go d.Run()
 	for {
 		select {
 		case <-t.C:
@@ -62,15 +62,6 @@ func (d *Downloader) RunAndPoll(poll func(current int64), interval time.Duration
 			return d.Error()
 		}
 	}
-}
-
-// AsyncRun starts the downloader copy-loop. This function is supposed to be run
-// on his own goroutine, it will close the Done channel when the download is completed
-// or an error occurs.
-//
-// Deprecated: use Run instead.
-func (d *Downloader) AsyncRun() {
-	d.Run()
 }
 
 // Run starts the downloader and waits until it completes the download.
