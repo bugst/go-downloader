@@ -204,6 +204,17 @@ func DownloadWithConfigAndContext(ctx context.Context, file string, reqURL strin
 		return nil, err
 	}
 
+	// Check server response
+	if !config.DoNotErrorOnNon2xxStatusCode {
+		if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusPartialContent {
+			_ = resp.Body.Close()
+			return &Downloader{
+				URL:  reqURL,
+				Resp: resp, // Return response for further inspection
+			}, fmt.Errorf("server returned %s", resp.Status)
+		}
+	}
+
 	// Open output file
 	flags := os.O_WRONLY
 	if resumeDownload {

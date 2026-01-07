@@ -23,6 +23,9 @@ type Config struct {
 	// when the HTTP HEAD request is done, before starting the download.
 	// If the function returns an error, the download is aborted.
 	AcceptFunc func(head *http.Response) error
+	// DoNotErrorOnNon2xxStatusCode set to true to not return an error
+	// if the server returns a non-2xx status code.
+	DoNotErrorOnNon2xxStatusCode bool
 }
 
 var defaultConfig Config = Config{}
