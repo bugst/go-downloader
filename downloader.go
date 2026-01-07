@@ -156,12 +156,18 @@ func DownloadWithConfigAndContext(ctx context.Context, file string, reqURL strin
 	}
 	remoteSize := headResp.ContentLength // -1 if server doesn't send Content-Length
 	serverCanResume := (headResp.Header.Get("Accept-Ranges") == "bytes") && (remoteSize != -1)
+	if _, err := io.Copy(io.Discard, headResp.Body); err != nil {
+		return nil, err
+	}
+	if err := headResp.Body.Close(); err != nil {
+		return nil, err
+	}
+
+	// Perform acceptance checks
 	var acceptError error
 	if config.AcceptFunc != nil {
 		acceptError = config.AcceptFunc(headResp)
 	}
-	_, _ = io.Copy(io.Discard, headResp.Body)
-	_ = headResp.Body.Close()
 	if acceptError != nil {
 		return nil, acceptError
 	}
