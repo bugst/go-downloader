@@ -125,6 +125,29 @@ func DownloadWithConfig(file string, reqURL string, config Config) (*Downloader,
 	return DownloadWithConfigAndContext(context.Background(), file, reqURL, config)
 }
 
+func doHeadRequest(ctx context.Context, reqURL string, config Config) (*http.Response, error) {
+	headReq, err := http.NewRequestWithContext(ctx, "HEAD", reqURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("setting up HEAD request: %s", err)
+	}
+	if config.ExtraHeaders != nil {
+		for k, v := range config.ExtraHeaders {
+			headReq.Header.Set(k, v)
+		}
+	}
+	headResp, err := config.HttpClient.Do(headReq)
+	if err != nil {
+		return nil, fmt.Errorf("performing HEAD request: %s", err)
+	}
+	if _, err := io.Copy(io.Discard, headResp.Body); err != nil {
+		return nil, err
+	}
+	if err := headResp.Body.Close(); err != nil {
+		return nil, err
+	}
+	return headResp, nil
+}
+
 // DownloadWithConfigAndContext applies an additional configuration to the http client and
 // returns an asynchronous downloader that will download the specified url
 // in the specified file.
@@ -141,27 +164,12 @@ func DownloadWithConfigAndContext(ctx context.Context, file string, reqURL strin
 	}
 
 	// Perform a HEAD call to gather information about the server capabilities and remote file
-	headReq, err := http.NewRequestWithContext(ctx, "HEAD", reqURL, nil)
+	headResp, err := doHeadRequest(ctx, reqURL, config)
 	if err != nil {
-		return nil, fmt.Errorf("setting up HEAD request: %s", err)
-	}
-	if config.ExtraHeaders != nil {
-		for k, v := range config.ExtraHeaders {
-			headReq.Header.Set(k, v)
-		}
-	}
-	headResp, err := config.HttpClient.Do(headReq)
-	if err != nil {
-		return nil, fmt.Errorf("performing HEAD request: %s", err)
+		return nil, err
 	}
 	remoteSize := headResp.ContentLength // -1 if server doesn't send Content-Length
 	serverCanResume := (headResp.Header.Get("Accept-Ranges") == "bytes") && (remoteSize != -1)
-	if _, err := io.Copy(io.Discard, headResp.Body); err != nil {
-		return nil, err
-	}
-	if err := headResp.Body.Close(); err != nil {
-		return nil, err
-	}
 
 	// Perform acceptance checks
 	var acceptError error
