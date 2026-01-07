@@ -18,18 +18,21 @@ import (
 
 // Downloader is an asynchronous downloader
 type Downloader struct {
-	URL           string
-	Done          chan struct{}
-	Resp          *http.Response
-	out           *os.File
-	completed     int64
-	completedLock sync.Mutex
-	size          int64
-	err           error
+	URL       string
+	Done      chan struct{}
+	Resp      *http.Response
+	out       *os.File
+	completed int64
+	size      int64
+	err       error
+	timeout   time.Duration
+	lock      sync.Mutex
 }
 
 // Close the download
 func (d *Downloader) close() {
+	d.lock.Lock()
+	defer d.lock.Unlock()
 	if d.out != nil {
 		d.out.Close()
 	}
@@ -41,6 +44,8 @@ func (d *Downloader) close() {
 
 // Size return the size of the download (or -1 if the server doesn't provide it)
 func (d *Downloader) Size() int64 {
+	d.lock.Lock()
+	defer d.lock.Unlock()
 	return d.size
 }
 
@@ -68,28 +73,49 @@ func (d *Downloader) RunAndPoll(poll func(current int64), interval time.Duration
 func (d *Downloader) Run() error {
 	defer d.close()
 
-	d.completedLock.Lock()
+	d.lock.Lock()
 	skip := (d.completed == d.size)
-	d.completedLock.Unlock()
+	d.lock.Unlock()
 	if skip {
 		return d.Error()
 	}
 
 	in := d.Resp.Body
+	var timeoutTimer *time.Timer
+	if d.timeout > 0 {
+		timeoutTimer = time.AfterFunc(d.timeout, func() {
+			d.lock.Lock()
+			if d.err == nil {
+				d.err = fmt.Errorf("download timeout after %s of inactivity", d.timeout)
+				in.Close()
+			}
+			d.lock.Unlock()
+		})
+		defer timeoutTimer.Stop()
+	}
+
 	buff := [4096]byte{}
 	for {
 		n, err := in.Read(buff[:])
 		if n > 0 {
 			_, _ = d.out.Write(buff[:n])
-			d.completedLock.Lock()
+
+			d.lock.Lock()
 			d.completed += int64(n)
-			d.completedLock.Unlock()
+			if timeoutTimer != nil {
+				timeoutTimer.Reset(d.timeout)
+			}
+			d.lock.Unlock()
 		}
 		if err == io.EOF {
 			break
 		}
 		if err != nil {
-			d.err = err
+			d.lock.Lock()
+			if d.err == nil {
+				d.err = err
+			}
+			d.lock.Unlock()
 			break
 		}
 	}
@@ -98,15 +124,16 @@ func (d *Downloader) Run() error {
 
 // Error returns the error during download or nil if no errors happened
 func (d *Downloader) Error() error {
+	d.lock.Lock()
+	defer d.lock.Unlock()
 	return d.err
 }
 
 // Completed returns the bytes read so far
 func (d *Downloader) Completed() int64 {
-	d.completedLock.Lock()
-	res := d.completed
-	d.completedLock.Unlock()
-	return res
+	d.lock.Lock()
+	defer d.lock.Unlock()
+	return d.completed
 }
 
 // Download returns an asynchronous downloader that will download the specified url
@@ -132,6 +159,13 @@ func DownloadWithConfig(file string, reqURL string, config Config) (*Downloader,
 // The download is restarted from scratch if the local file is larger than the remote file.
 func DownloadWithConfigAndContext(ctx context.Context, file string, reqURL string, config Config) (*Downloader, error) {
 	clientCanResume := !config.DoNotResumeDownload
+
+	// Timeout setup
+	if config.InactivityTimeout > 0 {
+		timeoutCtx, cancel := context.WithTimeout(ctx, config.InactivityTimeout)
+		defer cancel()
+		ctx = timeoutCtx
+	}
 
 	// Gather information about local file
 	var localSize int64
@@ -235,5 +269,6 @@ func DownloadWithConfigAndContext(ctx context.Context, file string, reqURL strin
 		out:       f,
 		completed: completed,
 		size:      remoteSize,
+		timeout:   config.InactivityTimeout,
 	}, nil
 }

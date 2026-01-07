@@ -9,6 +9,7 @@ package downloader
 import (
 	"net/http"
 	"sync"
+	"time"
 )
 
 // Config contains the configuration for the downloader
@@ -26,6 +27,9 @@ type Config struct {
 	// DoNotErrorOnNon2xxStatusCode set to true to not return an error
 	// if the server returns a non-2xx status code.
 	DoNotErrorOnNon2xxStatusCode bool
+	// InactivityTimeout is the duration after which, if no data is received,
+	// the download is aborted. If set to 0, no timeout is applied.
+	InactivityTimeout time.Duration
 }
 
 var defaultConfig Config = Config{}

@@ -145,9 +145,9 @@ func TestRunAndPool(t *testing.T) {
 		prevCurr = curr
 		callCount++
 	}
-	_ = d.RunAndPoll(callback, time.Millisecond)
+	require.NoError(t, d.RunAndPoll(callback, time.Millisecond))
 	fmt.Printf("callback called %d times\n", callCount)
-	require.True(t, callCount > 10)
+	require.Greater(t, callCount, 10)
 	require.Equal(t, int64(4897949), d.Completed())
 }
 
