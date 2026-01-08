@@ -26,6 +26,7 @@ type Downloader struct {
 	size          int64
 	err           error
 	timeout       time.Duration
+	cancel        context.CancelCauseFunc
 }
 
 // Close the download
@@ -35,6 +36,9 @@ func (d *Downloader) close() {
 	}
 	if d.Resp != nil {
 		d.Resp.Body.Close()
+	}
+	if d.cancel != nil {
+		d.cancel(nil)
 	}
 }
 
@@ -78,6 +82,14 @@ func (d *Downloader) Run() error {
 	}
 
 	in := d.Resp.Body
+	var timeoutTimer *time.Timer
+	if d.timeout > 0 {
+		timeoutTimer = time.AfterFunc(d.timeout, func() {
+			d.cancel(os.ErrDeadlineExceeded)
+		})
+		defer timeoutTimer.Stop()
+	}
+
 	buff := [4096]byte{}
 	for {
 		n, err := in.Read(buff[:])
@@ -86,6 +98,10 @@ func (d *Downloader) Run() error {
 			d.completedLock.Lock()
 			d.completed += int64(n)
 			d.completedLock.Unlock()
+			if d.timeout > 0 {
+				// Extend inactivity timeout deadline
+				timeoutTimer.Reset(d.timeout)
+			}
 		}
 		if err == io.EOF {
 			break
@@ -203,8 +219,17 @@ func DownloadWithConfigAndContext(ctx context.Context, file string, reqURL strin
 	}
 
 	// Perform the actual GET request
+	ctx, cancel := context.WithCancelCause(ctx)
+	// Setup inactivity timeout for the GET request
+	if config.InactivityTimeout > 0 {
+		timer := time.AfterFunc(config.InactivityTimeout, func() {
+			cancel(os.ErrDeadlineExceeded)
+		})
+		defer timer.Stop()
+	}
 	req, err := http.NewRequestWithContext(ctx, "GET", reqURL, nil)
 	if err != nil {
+		cancel(nil)
 		return nil, fmt.Errorf("setting up HTTP request: %s", err)
 	}
 	if config.ExtraHeaders != nil {
@@ -218,6 +243,7 @@ func DownloadWithConfigAndContext(ctx context.Context, file string, reqURL strin
 	}
 	resp, err := config.HttpClient.Do(req)
 	if err != nil {
+		cancel(nil)
 		return nil, err
 	}
 
@@ -225,6 +251,7 @@ func DownloadWithConfigAndContext(ctx context.Context, file string, reqURL strin
 	if !config.DoNotErrorOnNon2xxStatusCode {
 		if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusPartialContent {
 			_ = resp.Body.Close()
+			cancel(nil)
 			return &Downloader{
 				URL:  reqURL,
 				Resp: resp, // Return response for further inspection
@@ -242,6 +269,7 @@ func DownloadWithConfigAndContext(ctx context.Context, file string, reqURL strin
 	f, err := os.OpenFile(file, flags, 0644)
 	if err != nil {
 		_ = resp.Body.Close()
+		cancel(nil)
 		return nil, fmt.Errorf("opening %s for writing: %s", file, err)
 	}
 
@@ -251,6 +279,7 @@ func DownloadWithConfigAndContext(ctx context.Context, file string, reqURL strin
 		out:       f,
 		completed: completed,
 		size:      remoteSize,
+		cancel:    cancel,
 		timeout:   config.InactivityTimeout,
 	}, nil
 }

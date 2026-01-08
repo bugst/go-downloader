@@ -263,3 +263,88 @@ func TestTimeoutOnHEADCall(t *testing.T) {
 	require.True(t, elapsed < 5*time.Second)
 	fmt.Println("Download aborted due to timeout as expected after", elapsed)
 }
+
+func TestTimeoutOnGETCall(t *testing.T) {
+	slowHandler := func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "HEAD" {
+			w.Header().Set("Content-Length", "5000")
+			return
+		}
+		time.Sleep(3 * time.Second) // Delay response sending any data
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("/slow", slowHandler)
+	server := httptest.NewServer(mux)
+	t.Cleanup(server.Close)
+
+	tmpFile := makeTmpFile(t)
+
+	config := downloader.Config{
+		InactivityTimeout: 1 * time.Second,
+	}
+
+	startTime := time.Now()
+	d, err := downloader.DownloadWithConfig(tmpFile, server.URL+"/slow", config)
+	require.Error(t, err)
+	require.Nil(t, d)
+	require.Contains(t, err.Error(), "i/o timeout")
+	elapsed := time.Since(startTime)
+	require.True(t, elapsed < 5*time.Second)
+	fmt.Println("Download aborted due to timeout as expected after", elapsed)
+}
+
+func TestInactivityTimeout(t *testing.T) {
+	// Create a handler that sends some data, then becomes inactive
+	inactiveHandler := func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "HEAD" {
+			// For HEAD requests, just return Content-Length
+			w.Header().Set("Content-Length", "50")
+			return
+		}
+		w.(http.Flusher).Flush() // Ensure headers are sent immediately
+
+		// Send initial burst of data (500 ms)
+		for range 5 {
+			time.Sleep(100 * time.Millisecond)
+			fmt.Fprintf(w, "AAAAA")
+			w.(http.Flusher).Flush()
+		}
+		// Rest inactive for 1000 ms
+		time.Sleep(1000 * time.Millisecond)
+		// Send more data (500 ms)
+		for range 5 {
+			time.Sleep(100 * time.Millisecond)
+			fmt.Fprintf(w, "AAAAA")
+			w.(http.Flusher).Flush()
+		}
+		// 2000 ms total time
+	}
+
+	// Start test server
+	mux := http.NewServeMux()
+	mux.HandleFunc("/inactive", inactiveHandler)
+	server := httptest.NewServer(mux)
+	t.Cleanup(server.Close)
+
+	// Request download with inactivity timeout of 500ms
+	tmpFile := makeTmpFile(t)
+	d, err := downloader.DownloadWithConfigAndContext(
+		t.Context(), tmpFile, server.URL+"/inactive",
+		downloader.Config{
+			InactivityTimeout: 500 * time.Millisecond,
+		},
+	)
+	require.NoError(t, err)
+
+	// Run the download, should timeout due to inactivity
+	startTime := time.Now()
+	err = d.Run()
+	elapsed := time.Since(startTime)
+
+	// Check that we got a timeout error
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "i/o timeout")
+
+	// Check that it took around 1 second (initial burst of data 500ms + 500ms second timeout)
+	require.InEpsilon(t, 1000*time.Millisecond, elapsed, 0.05, "Elapsed time should be around 1 second, but is %v", elapsed)
+}
