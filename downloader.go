@@ -19,7 +19,6 @@ import (
 // Downloader is an asynchronous downloader
 type Downloader struct {
 	URL           string
-	Done          chan struct{}
 	Resp          *http.Response
 	out           *os.File
 	completed     int64
@@ -36,7 +35,6 @@ func (d *Downloader) close() {
 	if d.Resp != nil {
 		d.Resp.Body.Close()
 	}
-	close(d.Done)
 }
 
 // Size return the size of the download (or -1 if the server doesn't provide it)
@@ -50,14 +48,17 @@ func (d *Downloader) RunAndPoll(poll func(current int64), interval time.Duration
 	t := time.NewTicker(interval)
 	defer t.Stop()
 
-	go d.Run()
+	res := make(chan error, 1)
+	go func() {
+		res <- d.Run()
+	}()
 	for {
 		select {
 		case <-t.C:
 			poll(d.Completed())
-		case <-d.Done:
+		case err := <-res:
 			poll(d.Completed())
-			return d.Error()
+			return err
 		}
 	}
 }
@@ -172,7 +173,6 @@ func DownloadWithConfigAndContext(ctx context.Context, file string, reqURL strin
 			// Size matches: assume the file is already downloaded
 			return &Downloader{
 				URL:       reqURL,
-				Done:      make(chan struct{}),
 				Resp:      headResp,
 				completed: remoteSize,
 				size:      remoteSize,
@@ -230,7 +230,6 @@ func DownloadWithConfigAndContext(ctx context.Context, file string, reqURL strin
 
 	return &Downloader{
 		URL:       reqURL,
-		Done:      make(chan struct{}),
 		Resp:      resp,
 		out:       f,
 		completed: completed,
