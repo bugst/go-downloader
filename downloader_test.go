@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -145,9 +146,9 @@ func TestRunAndPool(t *testing.T) {
 		prevCurr = curr
 		callCount++
 	}
-	_ = d.RunAndPoll(callback, time.Millisecond)
+	require.NoError(t, d.RunAndPoll(callback, time.Millisecond))
 	fmt.Printf("callback called %d times\n", callCount)
-	require.True(t, callCount > 10)
+	require.Greater(t, callCount, 10)
 	require.Equal(t, int64(4897949), d.Completed())
 }
 
@@ -197,8 +198,12 @@ func TestApplyUserAgentHeaderUsingConfig(t *testing.T) {
 
 func TestContextCancelation(t *testing.T) {
 	slowHandler := func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "HEAD" {
+			w.Header().Set("Content-Length", "500")
+			return
+		}
 		for i := range 50 {
-			fmt.Fprintf(w, "Hello %d\n", i)
+			fmt.Fprintf(w, "Hello %02d.\n", i)
 			w.(http.Flusher).Flush()
 			time.Sleep(100 * time.Millisecond)
 		}
@@ -206,18 +211,13 @@ func TestContextCancelation(t *testing.T) {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/slow", slowHandler)
-	server := &http.Server{Addr: ":8080", Handler: mux}
-	go func() {
-		err := server.ListenAndServe()
-		fmt.Println("Server stopped with err:", err)
-	}()
-	// Wait for server start
-	time.Sleep(time.Second)
+	server := httptest.NewServer(mux)
+	t.Cleanup(server.Close)
 
 	tmpFile := makeTmpFile(t)
 
 	ctx, cancel := context.WithCancel(context.Background())
-	d, err := downloader.DownloadWithConfigAndContext(ctx, tmpFile, "http://127.0.0.1:8080/slow", downloader.Config{})
+	d, err := downloader.DownloadWithConfigAndContext(ctx, tmpFile, server.URL+"/slow", downloader.Config{})
 	require.NoError(t, err)
 
 	// Cancel in two seconds
@@ -234,7 +234,6 @@ func TestContextCancelation(t *testing.T) {
 		max = curr
 	}, 100*time.Millisecond)
 	require.EqualError(t, err, "context canceled")
-	require.True(t, max < 400)
-
-	require.NoError(t, server.Shutdown(context.Background()))
+	require.True(t, max < 210)
+	fmt.Println("Context canceled successfully")
 }
