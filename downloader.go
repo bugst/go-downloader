@@ -25,6 +25,7 @@ type Downloader struct {
 	completedLock sync.Mutex
 	size          int64
 	err           error
+	timeout       time.Duration
 }
 
 // Close the download
@@ -135,6 +136,8 @@ func doHeadRequest(ctx context.Context, reqURL string, config Config) (*http.Res
 			headReq.Header.Set(k, v)
 		}
 	}
+	// Should complete the HEAD call within the inactivity timeout
+	config.HttpClient.Timeout = config.InactivityTimeout
 	headResp, err := config.HttpClient.Do(headReq)
 	if err != nil {
 		return nil, fmt.Errorf("performing HEAD request: %s", err)
@@ -248,5 +251,6 @@ func DownloadWithConfigAndContext(ctx context.Context, file string, reqURL strin
 		out:       f,
 		completed: completed,
 		size:      remoteSize,
+		timeout:   config.InactivityTimeout,
 	}, nil
 }
