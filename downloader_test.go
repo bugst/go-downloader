@@ -237,3 +237,29 @@ func TestContextCancelation(t *testing.T) {
 	require.True(t, max < 210)
 	fmt.Println("Context canceled successfully")
 }
+
+func TestTimeoutOnHEADCall(t *testing.T) {
+	timeoutHandler := func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(3 * time.Second)
+		fmt.Fprintln(w, "This is a slow response")
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("/timeout", timeoutHandler)
+	server := httptest.NewServer(mux)
+	t.Cleanup(server.Close)
+
+	tmpFile := makeTmpFile(t)
+
+	config := downloader.Config{
+		InactivityTimeout: 1 * time.Second,
+	}
+
+	startTime := time.Now()
+	d, err := downloader.DownloadWithConfig(tmpFile, server.URL+"/timeout", config)
+	require.Error(t, err)
+	require.Nil(t, d)
+	require.Contains(t, err.Error(), "context deadline exceeded")
+	elapsed := time.Since(startTime)
+	require.True(t, elapsed < 5*time.Second)
+	fmt.Println("Download aborted due to timeout as expected after", elapsed)
+}
