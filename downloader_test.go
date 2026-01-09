@@ -137,16 +137,20 @@ func TestInvalidRequest(t *testing.T) {
 func TestRunAndPool(t *testing.T) {
 	tmpFile := makeTmpFile(t)
 
-	d, err := downloader.Download(tmpFile, "https://downloads.arduino.cc/cores/avr-1.6.20.tar.bz2")
-	require.NoError(t, err)
 	prevCurr := int64(0)
 	callCount := 0
-	callback := func(curr int64) {
+	callback := func(curr, size int64) {
 		require.True(t, prevCurr <= curr)
 		prevCurr = curr
 		callCount++
 	}
-	require.NoError(t, d.RunAndPoll(callback, time.Millisecond))
+
+	config := downloader.GetDefaultConfig()
+	config.PollFunction = callback
+	config.PollInterval = time.Millisecond
+	d, err := downloader.DownloadWithConfig(tmpFile, "https://downloads.arduino.cc/cores/avr-1.6.20.tar.bz2", config)
+	require.NoError(t, err)
+	require.NoError(t, d.Run())
 	fmt.Printf("callback called %d times\n", callCount)
 	require.Greater(t, callCount, 10)
 	require.Equal(t, int64(4897949), d.Completed())
@@ -216,23 +220,28 @@ func TestContextCancelation(t *testing.T) {
 
 	tmpFile := makeTmpFile(t)
 
+	max := int64(0)
+	startTime := time.Now()
+	callback := func(curr, size int64) {
+		fmt.Println("Downloaded", curr, "bytes of", size, ". Elapsed:", time.Since(startTime))
+		max = curr
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
-	d, err := downloader.DownloadWithConfigAndContext(ctx, tmpFile, server.URL+"/slow", downloader.Config{})
+	d, err := downloader.DownloadWithConfigAndContext(ctx, tmpFile, server.URL+"/slow", downloader.Config{
+		PollInterval: 100 * time.Millisecond,
+		PollFunction: callback,
+	})
 	require.NoError(t, err)
 
 	// Cancel in two seconds
-	startTime := time.Now()
 	go func() {
 		time.Sleep(2 * time.Second)
 		cancel()
 	}()
 
 	// Run slow download
-	max := int64(0)
-	err = d.RunAndPoll(func(curr int64) {
-		fmt.Println("Downloaded", curr, "bytes. Elapsed:", time.Since(startTime))
-		max = curr
-	}, 100*time.Millisecond)
+	err = d.Run()
 	require.EqualError(t, err, "context canceled")
 	require.True(t, max < 210)
 	fmt.Println("Context canceled successfully")

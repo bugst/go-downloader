@@ -26,6 +26,8 @@ type Downloader struct {
 	size          int64
 	err           error
 	wdog          watchdog
+	pollCB        func(current, size int64)
+	pollInterval  time.Duration
 }
 
 // Size return the size of the download (or -1 if the server doesn't provide it)
@@ -33,31 +35,32 @@ func (d *Downloader) Size() int64 {
 	return d.size
 }
 
-// RunAndPoll starts the downloader copy-loop and calls the poll function every
-// interval time to update progress.
-func (d *Downloader) RunAndPoll(poll func(current int64), interval time.Duration) error {
-	t := time.NewTicker(interval)
+// Run starts the downloader and waits until it completes the download.
+func (d *Downloader) Run() error {
+	if d.pollCB == nil {
+		// Run the non-interactive download
+		return d.run()
+	}
+
+	t := time.NewTicker(d.pollInterval)
 	defer t.Stop()
 
 	res := make(chan error, 1)
 	go func() {
-		res <- d.Run()
+		res <- d.run()
 	}()
 	for {
 		select {
 		case <-t.C:
-			poll(d.Completed())
+			d.pollCB(d.Completed(), d.size)
 		case err := <-res:
-			poll(d.Completed())
+			d.pollCB(d.Completed(), d.size)
 			return err
 		}
 	}
 }
 
-// Run starts the downloader and waits until it completes the download.
-// This method can be run in a goroutine to perform an asynchronous download;
-// it will close the Done channel when the download is completed or an error occurs.
-func (d *Downloader) Run() error {
+func (d *Downloader) run() error {
 	d.completedLock.Lock()
 	skip := (d.completed == d.size)
 	d.completedLock.Unlock()
@@ -257,11 +260,13 @@ func DownloadWithConfigAndContext(ctx context.Context, file string, reqURL strin
 	}
 
 	return &Downloader{
-		URL:       reqURL,
-		Resp:      resp,
-		out:       f,
-		completed: completed,
-		size:      remoteSize,
-		wdog:      wdog,
+		URL:          reqURL,
+		Resp:         resp,
+		out:          f,
+		completed:    completed,
+		size:         remoteSize,
+		wdog:         wdog,
+		pollCB:       config.PollFunction,
+		pollInterval: config.PollInterval,
 	}, nil
 }
