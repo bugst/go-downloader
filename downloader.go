@@ -29,17 +29,6 @@ type Downloader struct {
 	wdog          watchdog
 }
 
-// Close the download
-func (d *Downloader) close() {
-	if d.out != nil {
-		d.out.Close()
-	}
-	if d.Resp != nil {
-		d.Resp.Body.Close()
-	}
-	d.wdog.Cancel()
-}
-
 // Size return the size of the download (or -1 if the server doesn't provide it)
 func (d *Downloader) Size() int64 {
 	return d.size
@@ -77,7 +66,11 @@ func (d *Downloader) Run() error {
 		return d.Error()
 	}
 
-	defer d.close()
+	defer func() {
+		d.out.Close()
+		d.Resp.Body.Close()
+		d.wdog.Cancel()
+	}()
 
 	in := d.Resp.Body
 	buff := [4096]byte{}
