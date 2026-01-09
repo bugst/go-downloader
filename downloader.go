@@ -74,20 +74,29 @@ func (d *Downloader) Run() error {
 	in := d.Resp.Body
 	buff := [4096]byte{}
 	for {
-		n, err := in.Read(buff[:])
+		n, readErr := in.Read(buff[:])
 		if n > 0 {
-			_, _ = d.out.Write(buff[:n])
+			if _, writeErr := d.out.Write(buff[:n]); writeErr != nil {
+				// Error writing to file
+				d.err = writeErr
+				break
+			}
+
+			// Update completed bytes count
 			d.completedLock.Lock()
 			d.completed += int64(n)
 			d.completedLock.Unlock()
+
 			// Extend inactivity timeout deadline
 			d.wdog.Kick()
 		}
-		if err == io.EOF {
+		if readErr == io.EOF {
+			// Download completed successfully!
 			break
 		}
-		if err != nil {
-			d.err = err
+		if readErr != nil {
+			// Network or other error
+			d.err = readErr
 			break
 		}
 	}
