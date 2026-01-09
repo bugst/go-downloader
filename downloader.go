@@ -25,7 +25,6 @@ type Downloader struct {
 	completedLock sync.Mutex
 	size          int64
 	err           error
-	timeout       time.Duration
 	wdog          watchdog
 }
 
