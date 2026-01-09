@@ -30,6 +30,11 @@ type Config struct {
 	// InactivityTimeout is the duration after which, if no data is received,
 	// the download is aborted. If set to 0, no timeout is applied.
 	InactivityTimeout time.Duration
+	// PollFunction is an optional function that will be called periodically
+	// during the download to report progress.
+	PollFunction func(current, size int64)
+	// PollInterval is the interval at which the PollFunction is called.
+	PollInterval time.Duration
 }
 
 var defaultConfig Config = Config{}
