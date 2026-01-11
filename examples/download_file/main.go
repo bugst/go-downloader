@@ -23,17 +23,12 @@ func main() {
 	}
 	defer os.RemoveAll(tmp)
 
-	d, err := downloader.DownloadWithConfig(filepath.Join(tmp, "test.txt"), "https://go.bug.st/test.txt", downloader.Config{
+	if err := downloader.DownloadWithConfig(filepath.Join(tmp, "test.txt"), "https://go.bug.st/test.txt", downloader.Config{
 		PollInterval: time.Millisecond,
 		PollFunction: func(current, size int64) {
 			fmt.Printf("Downloaded %d / %d bytes (%.2f%%)\n", current, size, float64(current)*100.0/float64(size))
 		},
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	if err := d.Run(); err != nil {
+	}); err != nil {
 		log.Fatal(err)
 	}
 }
