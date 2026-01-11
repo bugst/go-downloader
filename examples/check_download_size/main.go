@@ -15,15 +15,14 @@ import (
 )
 
 func main() {
-	_, err := downloader.DownloadWithConfig("test.txt", "https://go.bug.st/test.txt", downloader.Config{
+	if err := downloader.DownloadWithConfig("test.txt", "https://go.bug.st/test.txt", downloader.Config{
 		AcceptFunc: func(head *http.Response) error {
 			if head.ContentLength > 2000 {
 				return fmt.Errorf("insufficient space for download")
 			}
 			return nil
 		},
-	})
-	if err != nil {
+	}); err != nil {
 		log.Fatal(err)
 	}
 

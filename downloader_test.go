@@ -10,7 +10,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -37,13 +36,25 @@ func makeTmpFile(t *testing.T) string {
 func TestDownload(t *testing.T) {
 	tmpFile := makeTmpFile(t)
 
-	d, err := downloader.Download(tmpFile, "https://go.bug.st/test.txt")
+	initialSize := int64(0)
+	fullSize := int64(8052)
+	finalSize := int64(0)
+	count := 0
+	err := downloader.DownloadWithConfig(tmpFile, "https://go.bug.st/test.txt", downloader.Config{
+		PollInterval: time.Second,
+		PollFunction: func(current, size int64) {
+			if count == 0 {
+				initialSize = current
+			}
+			fullSize = size
+			finalSize = current
+			count++
+		},
+	})
 	require.NoError(t, err)
-	require.Equal(t, int64(0), d.Completed())
-	require.Equal(t, int64(8052), d.Size())
-	require.NoError(t, d.Run())
-	require.Equal(t, int64(8052), d.Completed())
-	require.Equal(t, int64(8052), d.Size())
+	require.Equal(t, int64(0), initialSize)
+	require.Equal(t, int64(8052), fullSize)
+	require.Equal(t, int64(8052), finalSize)
 
 	file1, err := os.ReadFile("testdata/test.txt")
 	require.NoError(t, err)
@@ -60,13 +71,25 @@ func TestResume(t *testing.T) {
 	err = os.WriteFile(tmpFile, part, 0644)
 	require.NoError(t, err)
 
-	d, err := downloader.Download(tmpFile, "https://go.bug.st/test.txt")
-	require.Equal(t, int64(3506), d.Completed())
-	require.Equal(t, int64(8052), d.Size())
+	initialSize := int64(0)
+	fullSize := int64(8052)
+	finalSize := int64(0)
+	count := 0
+	err = downloader.DownloadWithConfig(tmpFile, "https://go.bug.st/test.txt", downloader.Config{
+		PollInterval: time.Second,
+		PollFunction: func(current, size int64) {
+			if count == 0 {
+				initialSize = current
+			}
+			fullSize = size
+			finalSize = current
+			count++
+		},
+	})
 	require.NoError(t, err)
-	require.NoError(t, d.Run())
-	require.Equal(t, int64(8052), d.Completed())
-	require.Equal(t, int64(8052), d.Size())
+	require.Equal(t, int64(3506), initialSize)
+	require.Equal(t, int64(8052), fullSize)
+	require.Equal(t, int64(8052), finalSize)
 
 	file1, err := os.ReadFile("testdata/test.txt")
 	require.NoError(t, err)
@@ -82,12 +105,26 @@ func TestResumeOnAlreadyCompletedFile(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(tmpFile, full, 0644))
 
-	d, err := downloader.Download(tmpFile, "https://go.bug.st/test.txt")
+	initialSize := int64(0)
+	fullSize := int64(8052)
+	finalSize := int64(0)
+	count := 0
+	err = downloader.DownloadWithConfig(tmpFile, "https://go.bug.st/test.txt", downloader.Config{
+		PollInterval: time.Second,
+		PollFunction: func(current, size int64) {
+			if count == 0 {
+				initialSize = current
+			}
+			fullSize = size
+			finalSize = current
+			count++
+		},
+	})
 	require.NoError(t, err)
-	require.Equal(t, int64(8052), d.Completed())
-	require.Equal(t, int64(8052), d.Size())
-	require.NoError(t, d.Run())
-	require.Equal(t, int64(8052), d.Completed())
+	require.Equal(t, int64(8052), initialSize)
+	require.Equal(t, int64(8052), fullSize)
+	require.Equal(t, int64(8052), finalSize)
+	require.NoError(t, err)
 
 	// Check file content is unchanged
 	file2, err := os.ReadFile(tmpFile)
@@ -103,15 +140,26 @@ func TestNoResume(t *testing.T) {
 	err = os.WriteFile(tmpFile, part, 0644)
 	require.NoError(t, err)
 
-	d, err := downloader.DownloadWithConfig(tmpFile, "https://go.bug.st/test.txt", downloader.Config{
+	initialSize := int64(0)
+	fullSize := int64(8052)
+	finalSize := int64(0)
+	count := 0
+	err = downloader.DownloadWithConfig(tmpFile, "https://go.bug.st/test.txt", downloader.Config{
 		DoNotResumeDownload: true,
+		PollInterval:        time.Second,
+		PollFunction: func(current, size int64) {
+			if count == 0 {
+				initialSize = current
+			}
+			fullSize = size
+			finalSize = current
+			count++
+		},
 	})
-	require.Equal(t, int64(0), d.Completed())
-	require.Equal(t, int64(8052), d.Size())
 	require.NoError(t, err)
-	require.NoError(t, d.Run())
-	require.Equal(t, int64(8052), d.Completed())
-	require.Equal(t, int64(8052), d.Size())
+	require.Equal(t, int64(0), initialSize)
+	require.Equal(t, int64(8052), fullSize)
+	require.Equal(t, int64(8052), finalSize)
 
 	file1, err := os.ReadFile("testdata/test.txt")
 	require.NoError(t, err)
@@ -123,14 +171,8 @@ func TestNoResume(t *testing.T) {
 func TestInvalidRequest(t *testing.T) {
 	tmpFile := makeTmpFile(t)
 
-	d, err := downloader.Download(tmpFile, "asd://go.bug.st/test.txt")
+	err := downloader.Download(tmpFile, "asd://go.bug.st/test.txt")
 	require.Error(t, err)
-	require.Nil(t, d)
-	fmt.Println("ERROR:", err)
-
-	d, err = downloader.Download(tmpFile, "://")
-	require.Error(t, err)
-	require.Nil(t, d)
 	fmt.Println("ERROR:", err)
 }
 
@@ -148,52 +190,34 @@ func TestRunAndPool(t *testing.T) {
 	config := downloader.GetDefaultConfig()
 	config.PollFunction = callback
 	config.PollInterval = time.Millisecond
-	d, err := downloader.DownloadWithConfig(tmpFile, "https://downloads.arduino.cc/cores/avr-1.6.20.tar.bz2", config)
+	err := downloader.DownloadWithConfig(tmpFile, "https://downloads.arduino.cc/cores/avr-1.6.20.tar.bz2", config)
 	require.NoError(t, err)
-	require.NoError(t, d.Run())
 	fmt.Printf("callback called %d times\n", callCount)
 	require.Greater(t, callCount, 10)
-	require.Equal(t, int64(4897949), d.Completed())
+	require.Equal(t, int64(4897949), prevCurr)
 }
 
 func TestErrorOnFileOpening(t *testing.T) {
 	unaccessibleFile := filepath.Join(os.TempDir(), "nonexistentdir", "test.txt")
-	d, err := downloader.Download(unaccessibleFile, "http://go.bug.st/test.txt")
+	err := downloader.Download(unaccessibleFile, "http://go.bug.st/test.txt")
 	require.Error(t, err)
-	require.Nil(t, d)
-}
-
-type roundTripper struct {
-	UserAgent string
-	transport http.Transport
-}
-
-func (r *roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
-	req.Header["User-Agent"] = []string{r.UserAgent}
-	return r.transport.RoundTrip(req)
 }
 
 // TestApplyUserAgentHeaderUsingConfig test uses the https://postman-echo.com/ service
 func TestApplyUserAgentHeaderUsingConfig(t *testing.T) {
-	type echoBody struct {
-		Headers map[string]string
-	}
-
 	tmpFile := makeTmpFile(t)
-	defer os.Remove(tmpFile)
 
-	httpClient := http.Client{
-		Transport: &roundTripper{UserAgent: "go-downloader / 0.0.0-test"},
-	}
-	config := downloader.Config{
-		HttpClient: httpClient,
-	}
-
-	d, err := downloader.DownloadWithConfig(tmpFile, "https://postman-echo.com/headers", config)
+	err := downloader.DownloadWithConfig(tmpFile, "https://postman-echo.com/headers", downloader.Config{
+		ExtraHeaders: map[string]string{
+			"User-Agent": "go-downloader / 0.0.0-test",
+		},
+	})
 	require.NoError(t, err)
 
-	testEchoBody := echoBody{}
-	body, err := io.ReadAll(d.Resp.Body)
+	testEchoBody := struct {
+		Headers map[string]string
+	}{}
+	body, err := os.ReadFile(tmpFile)
 	require.NoError(t, err)
 	err = json.Unmarshal(body, &testEchoBody)
 	require.NoError(t, err)
@@ -228,12 +252,6 @@ func TestContextCancelation(t *testing.T) {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	d, err := downloader.DownloadWithConfigAndContext(ctx, tmpFile, server.URL+"/slow", downloader.Config{
-		PollInterval: 100 * time.Millisecond,
-		PollFunction: callback,
-	})
-	require.NoError(t, err)
-
 	// Cancel in two seconds
 	go func() {
 		time.Sleep(2 * time.Second)
@@ -241,7 +259,10 @@ func TestContextCancelation(t *testing.T) {
 	}()
 
 	// Run slow download
-	err = d.Run()
+	err := downloader.DownloadWithConfigAndContext(ctx, tmpFile, server.URL+"/slow", downloader.Config{
+		PollInterval: 100 * time.Millisecond,
+		PollFunction: callback,
+	})
 	require.EqualError(t, err, "context canceled")
 	require.True(t, max < 210)
 	fmt.Println("Context canceled successfully")
@@ -264,9 +285,8 @@ func TestTimeoutOnHEADCall(t *testing.T) {
 	}
 
 	startTime := time.Now()
-	d, err := downloader.DownloadWithConfig(tmpFile, server.URL+"/timeout", config)
+	err := downloader.DownloadWithConfig(tmpFile, server.URL+"/timeout", config)
 	require.Error(t, err)
-	require.Nil(t, d)
 	require.Contains(t, err.Error(), "context deadline exceeded")
 	elapsed := time.Since(startTime)
 	require.True(t, elapsed < 5*time.Second)
@@ -293,9 +313,8 @@ func TestTimeoutOnGETCall(t *testing.T) {
 	}
 
 	startTime := time.Now()
-	d, err := downloader.DownloadWithConfig(tmpFile, server.URL+"/slow", config)
+	err := downloader.DownloadWithConfig(tmpFile, server.URL+"/slow", config)
 	require.Error(t, err)
-	require.Nil(t, d)
 	require.Contains(t, err.Error(), "i/o timeout")
 	elapsed := time.Since(startTime)
 	require.True(t, elapsed < 5*time.Second)
@@ -336,18 +355,15 @@ func TestInactivityTimeout(t *testing.T) {
 	t.Cleanup(server.Close)
 
 	// Request download with inactivity timeout of 500ms
+	// (should timeout due to inactivity)
 	tmpFile := makeTmpFile(t)
-	d, err := downloader.DownloadWithConfigAndContext(
+	startTime := time.Now()
+	err := downloader.DownloadWithConfigAndContext(
 		t.Context(), tmpFile, server.URL+"/inactive",
 		downloader.Config{
 			InactivityTimeout: 500 * time.Millisecond,
 		},
 	)
-	require.NoError(t, err)
-
-	// Run the download, should timeout due to inactivity
-	startTime := time.Now()
-	err = d.Run()
 	elapsed := time.Since(startTime)
 
 	// Check that we got a timeout error

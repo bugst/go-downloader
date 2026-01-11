@@ -16,113 +16,10 @@ import (
 	"time"
 )
 
-// Downloader is an asynchronous downloader
-type Downloader struct {
-	URL           string
-	Resp          *http.Response
-	out           *os.File
-	completed     int64
-	completedLock sync.Mutex
-	size          int64
-	err           error
-	wdog          watchdog
-	pollCB        func(current, size int64)
-	pollInterval  time.Duration
-}
-
-// Size return the size of the download (or -1 if the server doesn't provide it)
-func (d *Downloader) Size() int64 {
-	return d.size
-}
-
-// Run starts the downloader and waits until it completes the download.
-func (d *Downloader) Run() error {
-	if d.pollCB == nil {
-		// Run the non-interactive download
-		return d.run()
-	}
-
-	t := time.NewTicker(d.pollInterval)
-	defer t.Stop()
-
-	res := make(chan error, 1)
-	go func() {
-		res <- d.run()
-	}()
-	for {
-		select {
-		case <-t.C:
-			d.pollCB(d.Completed(), d.size)
-		case err := <-res:
-			d.pollCB(d.Completed(), d.size)
-			return err
-		}
-	}
-}
-
-func (d *Downloader) run() error {
-	d.completedLock.Lock()
-	skip := (d.completed == d.size)
-	d.completedLock.Unlock()
-	if skip {
-		return d.Error()
-	}
-
-	defer func() {
-		d.out.Close()
-		d.Resp.Body.Close()
-		d.wdog.Cancel()
-	}()
-
-	in := d.Resp.Body
-	buff := [4096]byte{}
-	for {
-		n, readErr := in.Read(buff[:])
-		if n > 0 {
-			if _, writeErr := d.out.Write(buff[:n]); writeErr != nil {
-				// Error writing to file
-				d.err = writeErr
-				break
-			}
-
-			// Update completed bytes count
-			d.completedLock.Lock()
-			d.completed += int64(n)
-			d.completedLock.Unlock()
-
-			// Extend inactivity timeout deadline
-			d.wdog.Kick()
-		}
-		if readErr == io.EOF {
-			// Download completed successfully!
-			break
-		}
-		if readErr != nil {
-			// Network or other error
-			d.err = readErr
-			break
-		}
-	}
-	return d.Error()
-}
-
-// Error returns the error during download or nil if no errors happened
-func (d *Downloader) Error() error {
-	return d.err
-}
-
-// Completed returns the bytes read so far
-func (d *Downloader) Completed() int64 {
-	d.completedLock.Lock()
-	res := d.completed
-	d.completedLock.Unlock()
-	return res
-}
-
 // Download returns an asynchronous downloader that will download the specified url
 // in the specified file. A download resume is tried if a file shorter than the requested
 // url is already present.
-func Download(file string, reqURL string) (*Downloader, error) {
+func Download(file string, reqURL string) error {
 	return DownloadWithConfig(file, reqURL, GetDefaultConfig())
 }
 
@@ -130,7 +27,7 @@ func Download(file string, reqURL string) (*Downloader, error) {
 // returns an asynchronous downloader that will download the specified url
 // in the specified file. A download resume is tried if a file shorter than the requested
 // url is already present.
-func DownloadWithConfig(file string, reqURL string, config Config) (*Downloader, error) {
+func DownloadWithConfig(file string, reqURL string, config Config) error {
 	return DownloadWithConfigAndContext(context.Background(), file, reqURL, config)
 }
 
@@ -165,7 +62,7 @@ func doHeadRequest(ctx context.Context, reqURL string, config Config) (*http.Res
 // A previous download is resumed if the local file is shorter than the remote file.
 // The download is skipped if the local file has the same size of the remote file.
 // The download is restarted from scratch if the local file is larger than the remote file.
-func DownloadWithConfigAndContext(ctx context.Context, file string, reqURL string, config Config) (*Downloader, error) {
+func DownloadWithConfigAndContext(ctx context.Context, file string, reqURL string, config Config) error {
 	clientCanResume := !config.DoNotResumeDownload
 
 	// Gather information about local file
@@ -177,7 +74,7 @@ func DownloadWithConfigAndContext(ctx context.Context, file string, reqURL strin
 	// Perform a HEAD call to gather information about the server capabilities and remote file
 	headResp, err := doHeadRequest(ctx, reqURL, config)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	remoteSize := headResp.ContentLength // -1 if server doesn't send Content-Length
 	serverCanResume := (headResp.Header.Get("Accept-Ranges") == "bytes") && (remoteSize != -1)
@@ -188,7 +85,7 @@ func DownloadWithConfigAndContext(ctx context.Context, file string, reqURL strin
 		acceptError = config.AcceptFunc(headResp)
 	}
 	if acceptError != nil {
-		return nil, acceptError
+		return acceptError
 	}
 
 	// If we are allowed to resume a download, check the local file size and decide how to proceed
@@ -196,12 +93,10 @@ func DownloadWithConfigAndContext(ctx context.Context, file string, reqURL strin
 	if clientCanResume {
 		if localSize == remoteSize {
 			// Size matches: assume the file is already downloaded
-			return &Downloader{
-				URL:       reqURL,
-				Resp:      headResp,
-				completed: remoteSize,
-				size:      remoteSize,
-			}, nil
+			if config.PollFunction != nil {
+				config.PollFunction(remoteSize, remoteSize)
+			}
+			return nil
 		}
 		if localSize < remoteSize {
 			// Local file is smaller than remote file: resume download
@@ -216,7 +111,7 @@ func DownloadWithConfigAndContext(ctx context.Context, file string, reqURL strin
 	req, err := http.NewRequestWithContext(ctx, "GET", reqURL, nil)
 	if err != nil {
 		wdog.Cancel()
-		return nil, fmt.Errorf("setting up HTTP request: %s", err)
+		return fmt.Errorf("setting up HTTP request: %s", err)
 	}
 	if config.ExtraHeaders != nil {
 		for k, v := range config.ExtraHeaders {
@@ -230,7 +125,7 @@ func DownloadWithConfigAndContext(ctx context.Context, file string, reqURL strin
 	resp, err := config.HttpClient.Do(req)
 	if err != nil {
 		wdog.Cancel()
-		return nil, err
+		return err
 	}
 
 	// Check server response
@@ -238,10 +133,7 @@ func DownloadWithConfigAndContext(ctx context.Context, file string, reqURL strin
 		if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusPartialContent {
 			_ = resp.Body.Close()
 			wdog.Cancel()
-			return &Downloader{
-				URL:  reqURL,
-				Resp: resp, // Return response for further inspection
-			}, fmt.Errorf("server returned %s", resp.Status)
+			return fmt.Errorf("server returned %s", resp.Status)
 		}
 	}
 
@@ -252,21 +144,67 @@ func DownloadWithConfigAndContext(ctx context.Context, file string, reqURL strin
 	} else {
 		flags |= os.O_CREATE | os.O_TRUNC
 	}
-	f, err := os.OpenFile(file, flags, 0644)
+	out, err := os.OpenFile(file, flags, 0644)
 	if err != nil {
 		_ = resp.Body.Close()
 		wdog.Cancel()
-		return nil, fmt.Errorf("opening %s for writing: %s", file, err)
+		return fmt.Errorf("opening %s for writing: %s", file, err)
 	}
 
-	return &Downloader{
-		URL:          reqURL,
-		Resp:         resp,
-		out:          f,
-		completed:    completed,
-		size:         remoteSize,
-		wdog:         wdog,
-		pollCB:       config.PollFunction,
-		pollInterval: config.PollInterval,
-	}, nil
+	var completedLock sync.Mutex
+	if config.PollFunction != nil {
+		update := func() {
+			completedLock.Lock()
+			_completed := completed
+			completedLock.Unlock()
+			config.PollFunction(_completed, remoteSize)
+		}
+
+		// send initial update
+		update()
+
+		var t *time.Timer
+		t = time.AfterFunc(config.PollInterval, func() {
+			// send intermediate updates
+			update()
+			t.Reset(config.PollInterval)
+		})
+
+		defer func() {
+			t.Stop()
+			// send final update
+			update()
+		}()
+	}
+
+	defer func() {
+		out.Close()
+		resp.Body.Close()
+		wdog.Cancel()
+	}()
+
+	in := resp.Body
+	buff := [4096]byte{}
+	for {
+		n, readErr := in.Read(buff[:])
+		if n > 0 {
+			if _, writeErr := out.Write(buff[:n]); writeErr != nil {
+				// Error writing to file
+				return writeErr
+			}
+
+			completedLock.Lock()
+			completed += int64(n)
+			completedLock.Unlock()
+
+			// Extend inactivity timeout deadline
+			wdog.Kick()
+		}
+		if readErr == io.EOF {
+			return nil
+		}
+		if readErr != nil {
+			return readErr
+		}
+	}
 }
