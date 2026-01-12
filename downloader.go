@@ -13,7 +13,7 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -82,7 +82,6 @@ func DownloadWithConfig(ctx context.Context, file string, reqURL string, config 
 	}
 
 	// If we are allowed to resume a download, check the local file size and decide how to proceed
-	var completed int64
 	if clientCanResume {
 		if localSize == remoteSize {
 			// Size matches: assume the file is already downloaded
@@ -91,10 +90,9 @@ func DownloadWithConfig(ctx context.Context, file string, reqURL string, config 
 			}
 			return nil
 		}
-		if localSize < remoteSize {
-			// Local file is smaller than remote file: resume download
-			// Remote size is unknown: resume download anyway
-			completed = localSize
+		if localSize > remoteSize {
+			// Local file is larger than remote file: restart download
+			clientCanResume = false
 		}
 	}
 
@@ -111,9 +109,9 @@ func DownloadWithConfig(ctx context.Context, file string, reqURL string, config 
 			req.Header.Set(k, v)
 		}
 	}
-	resumeDownload := clientCanResume && serverCanResume && completed > 0
+	resumeDownload := clientCanResume && serverCanResume && localSize > 0
 	if resumeDownload {
-		req.Header.Set("Range", fmt.Sprintf("bytes=%d-", completed))
+		req.Header.Set("Range", fmt.Sprintf("bytes=%d-", localSize))
 	}
 	resp, err := config.HttpClient.Do(req)
 	if err != nil {
@@ -142,13 +140,13 @@ func DownloadWithConfig(ctx context.Context, file string, reqURL string, config 
 	defer out.Close()
 
 	// Start polling goroutine if requested
-	var completedLock sync.Mutex
+	var completed atomic.Int64
+	if resumeDownload {
+		completed.Store(localSize)
+	}
 	if config.PollFunction != nil {
 		update := func() {
-			completedLock.Lock()
-			_completed := completed
-			completedLock.Unlock()
-			config.PollFunction(_completed, remoteSize)
+			config.PollFunction(completed.Load(), remoteSize)
 		}
 
 		// send initial update
@@ -179,9 +177,7 @@ func DownloadWithConfig(ctx context.Context, file string, reqURL string, config 
 				return writeErr
 			}
 
-			completedLock.Lock()
-			completed += int64(n)
-			completedLock.Unlock()
+			completed.Add(int64(n))
 
 			// Extend inactivity timeout deadline
 			wdog.Kick()
