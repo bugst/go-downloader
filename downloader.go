@@ -13,6 +13,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -145,7 +146,10 @@ func DownloadWithConfig(ctx context.Context, file string, reqURL string, config 
 		completed.Store(localSize)
 	}
 	if config.PollFunction != nil {
+		var updateLock sync.Mutex
 		update := func() {
+			updateLock.Lock()
+			defer updateLock.Unlock()
 			config.PollFunction(completed.Load(), remoteSize)
 		}
 
