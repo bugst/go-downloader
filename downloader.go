@@ -100,9 +100,9 @@ func DownloadWithConfig(ctx context.Context, file string, reqURL string, config 
 	// Perform the actual GET request
 	// Setup inactivity timeout for the GET request
 	ctx, wdog := newWatchdog(ctx, config.InactivityTimeout)
+	defer wdog.Cancel()
 	req, err := http.NewRequestWithContext(ctx, "GET", reqURL, nil)
 	if err != nil {
-		wdog.Cancel()
 		return fmt.Errorf("setting up HTTP request: %s", err)
 	}
 	if config.ExtraHeaders != nil {
@@ -116,15 +116,13 @@ func DownloadWithConfig(ctx context.Context, file string, reqURL string, config 
 	}
 	resp, err := config.HttpClient.Do(req)
 	if err != nil {
-		wdog.Cancel()
 		return err
 	}
+	defer resp.Body.Close()
 
 	// Check server response
 	if !config.DoNotErrorOnNon2xxStatusCode {
 		if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusPartialContent {
-			_ = resp.Body.Close()
-			wdog.Cancel()
 			return fmt.Errorf("server returned %s", resp.Status)
 		}
 	}
@@ -138,10 +136,9 @@ func DownloadWithConfig(ctx context.Context, file string, reqURL string, config 
 	}
 	out, err := os.OpenFile(file, flags, 0644)
 	if err != nil {
-		_ = resp.Body.Close()
-		wdog.Cancel()
 		return fmt.Errorf("opening %s for writing: %s", file, err)
 	}
+	defer out.Close()
 
 	var completedLock sync.Mutex
 	if config.PollFunction != nil {
@@ -168,12 +165,6 @@ func DownloadWithConfig(ctx context.Context, file string, reqURL string, config 
 			update()
 		}()
 	}
-
-	defer func() {
-		out.Close()
-		resp.Body.Close()
-		wdog.Cancel()
-	}()
 
 	in := resp.Body
 	buff := [4096]byte{}
