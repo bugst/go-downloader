@@ -7,6 +7,7 @@
 package downloader
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"io"
@@ -140,6 +141,7 @@ func DownloadWithConfig(ctx context.Context, file string, reqURL string, config 
 	}
 	defer out.Close()
 
+	// Start polling goroutine if requested
 	var completedLock sync.Mutex
 	if config.PollFunction != nil {
 		update := func() {
@@ -152,11 +154,12 @@ func DownloadWithConfig(ctx context.Context, file string, reqURL string, config 
 		// send initial update
 		update()
 
+		interval := cmp.Or(config.PollInterval.Abs(), 250*time.Millisecond)
 		var t *time.Timer
-		t = time.AfterFunc(config.PollInterval, func() {
+		t = time.AfterFunc(interval, func() {
 			// send intermediate updates
 			update()
-			t.Reset(config.PollInterval)
+			t.Reset(interval)
 		})
 
 		defer func() {
