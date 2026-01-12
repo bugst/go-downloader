@@ -33,7 +33,7 @@ type Config struct {
 	// PollFunction is an optional function that will be called periodically
 	// during the download to report progress.
 	PollFunction func(current, size int64)
-	// PollInterval is the interval at which the PollFunction is called.
+	// PollInterval is the interval at which the PollFunction is called (default is 250ms if not specified).
 	PollInterval time.Duration
 }
 
