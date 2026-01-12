@@ -7,6 +7,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net/http"
@@ -15,7 +16,7 @@ import (
 )
 
 func main() {
-	if err := downloader.DownloadWithConfig("test.txt", "https://go.bug.st/test.txt", downloader.Config{
+	if err := downloader.DownloadWithConfig(context.Background(), "test.txt", "https://go.bug.st/test.txt", downloader.Config{
 		AcceptFunc: func(head *http.Response) error {
 			if head.ContentLength > 2000 {
 				return fmt.Errorf("insufficient space for download")
