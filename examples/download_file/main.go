@@ -7,6 +7,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
@@ -23,12 +24,16 @@ func main() {
 	}
 	defer os.RemoveAll(tmp)
 
-	if err := downloader.DownloadWithConfig(filepath.Join(tmp, "test.txt"), "https://go.bug.st/test.txt", downloader.Config{
-		PollInterval: time.Millisecond,
-		PollFunction: func(current, size int64) {
-			fmt.Printf("Downloaded %d / %d bytes (%.2f%%)\n", current, size, float64(current)*100.0/float64(size))
-		},
-	}); err != nil {
+	if err := downloader.DownloadWithConfig(
+		context.Background(),
+		filepath.Join(tmp, "test.txt"),
+		"https://go.bug.st/test.txt",
+		downloader.Config{
+			PollInterval: time.Millisecond,
+			PollFunction: func(current, size int64) {
+				fmt.Printf("Downloaded %d / %d bytes (%.2f%%)\n", current, size, float64(current)*100.0/float64(size))
+			},
+		}); err != nil {
 		log.Fatal(err)
 	}
 }

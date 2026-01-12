@@ -16,21 +16,6 @@ import (
 	"time"
 )
 
-// Download returns an asynchronous downloader that will download the specified url
-// in the specified file. A download resume is tried if a file shorter than the requested
-// url is already present.
-func Download(file string, reqURL string) error {
-	return DownloadWithConfig(file, reqURL, GetDefaultConfig())
-}
-
-// DownloadWithConfig applies an additional configuration to the http client and
-// returns an asynchronous downloader that will download the specified url
-// in the specified file. A download resume is tried if a file shorter than the requested
-// url is already present.
-func DownloadWithConfig(file string, reqURL string, config Config) error {
-	return DownloadWithConfigAndContext(context.Background(), file, reqURL, config)
-}
-
 func doHeadRequest(ctx context.Context, reqURL string, config Config) (*http.Response, error) {
 	headReq, err := http.NewRequestWithContext(ctx, "HEAD", reqURL, nil)
 	if err != nil {
@@ -56,13 +41,20 @@ func doHeadRequest(ctx context.Context, reqURL string, config Config) (*http.Res
 	return headResp, nil
 }
 
-// DownloadWithConfigAndContext applies an additional configuration to the http client and
-// returns an asynchronous downloader that will download the specified url
-// in the specified file.
-// A previous download is resumed if the local file is shorter than the remote file.
+// Download downloads the specified url in the specified file.
+// A download resume is tried if a file shorter than the requested url is already present.
+func Download(ctx context.Context, file string, reqURL string) error {
+	return DownloadWithConfig(ctx, file, reqURL, GetDefaultConfig())
+}
+
+// DownloadWithConfig applies an additional configuration to the http client and
+// downloads download the specified url in the specified file.
+// A previous download is resumed if the local file is shorter than the remote file,
+// unless otherwise specified.
 // The download is skipped if the local file has the same size of the remote file.
-// The download is restarted from scratch if the local file is larger than the remote file.
-func DownloadWithConfigAndContext(ctx context.Context, file string, reqURL string, config Config) error {
+// The download is restarted from scratch if the local file is larger than the remote
+// file or if the server doesn't support resuming.
+func DownloadWithConfig(ctx context.Context, file string, reqURL string, config Config) error {
 	clientCanResume := !config.DoNotResumeDownload
 
 	// Gather information about local file

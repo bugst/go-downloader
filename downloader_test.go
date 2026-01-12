@@ -40,7 +40,7 @@ func TestDownload(t *testing.T) {
 	fullSize := int64(8052)
 	finalSize := int64(0)
 	count := 0
-	err := downloader.DownloadWithConfig(tmpFile, "https://go.bug.st/test.txt", downloader.Config{
+	err := downloader.DownloadWithConfig(t.Context(), tmpFile, "https://go.bug.st/test.txt", downloader.Config{
 		PollInterval: time.Second,
 		PollFunction: func(current, size int64) {
 			if count == 0 {
@@ -75,7 +75,7 @@ func TestResume(t *testing.T) {
 	fullSize := int64(8052)
 	finalSize := int64(0)
 	count := 0
-	err = downloader.DownloadWithConfig(tmpFile, "https://go.bug.st/test.txt", downloader.Config{
+	err = downloader.DownloadWithConfig(t.Context(), tmpFile, "https://go.bug.st/test.txt", downloader.Config{
 		PollInterval: time.Second,
 		PollFunction: func(current, size int64) {
 			if count == 0 {
@@ -109,7 +109,7 @@ func TestResumeOnAlreadyCompletedFile(t *testing.T) {
 	fullSize := int64(8052)
 	finalSize := int64(0)
 	count := 0
-	err = downloader.DownloadWithConfig(tmpFile, "https://go.bug.st/test.txt", downloader.Config{
+	err = downloader.DownloadWithConfig(t.Context(), tmpFile, "https://go.bug.st/test.txt", downloader.Config{
 		PollInterval: time.Second,
 		PollFunction: func(current, size int64) {
 			if count == 0 {
@@ -144,7 +144,7 @@ func TestNoResume(t *testing.T) {
 	fullSize := int64(8052)
 	finalSize := int64(0)
 	count := 0
-	err = downloader.DownloadWithConfig(tmpFile, "https://go.bug.st/test.txt", downloader.Config{
+	err = downloader.DownloadWithConfig(t.Context(), tmpFile, "https://go.bug.st/test.txt", downloader.Config{
 		DoNotResumeDownload: true,
 		PollInterval:        time.Second,
 		PollFunction: func(current, size int64) {
@@ -171,7 +171,7 @@ func TestNoResume(t *testing.T) {
 func TestInvalidRequest(t *testing.T) {
 	tmpFile := makeTmpFile(t)
 
-	err := downloader.Download(tmpFile, "asd://go.bug.st/test.txt")
+	err := downloader.Download(t.Context(), tmpFile, "asd://go.bug.st/test.txt")
 	require.Error(t, err)
 	fmt.Println("ERROR:", err)
 }
@@ -190,7 +190,7 @@ func TestRunAndPool(t *testing.T) {
 	config := downloader.GetDefaultConfig()
 	config.PollFunction = callback
 	config.PollInterval = time.Millisecond
-	err := downloader.DownloadWithConfig(tmpFile, "https://downloads.arduino.cc/cores/avr-1.6.20.tar.bz2", config)
+	err := downloader.DownloadWithConfig(t.Context(), tmpFile, "https://downloads.arduino.cc/cores/avr-1.6.20.tar.bz2", config)
 	require.NoError(t, err)
 	fmt.Printf("callback called %d times\n", callCount)
 	require.Greater(t, callCount, 10)
@@ -199,7 +199,7 @@ func TestRunAndPool(t *testing.T) {
 
 func TestErrorOnFileOpening(t *testing.T) {
 	unaccessibleFile := filepath.Join(os.TempDir(), "nonexistentdir", "test.txt")
-	err := downloader.Download(unaccessibleFile, "http://go.bug.st/test.txt")
+	err := downloader.Download(t.Context(), unaccessibleFile, "http://go.bug.st/test.txt")
 	require.Error(t, err)
 }
 
@@ -207,7 +207,7 @@ func TestErrorOnFileOpening(t *testing.T) {
 func TestApplyUserAgentHeaderUsingConfig(t *testing.T) {
 	tmpFile := makeTmpFile(t)
 
-	err := downloader.DownloadWithConfig(tmpFile, "https://postman-echo.com/headers", downloader.Config{
+	err := downloader.DownloadWithConfig(t.Context(), tmpFile, "https://postman-echo.com/headers", downloader.Config{
 		ExtraHeaders: map[string]string{
 			"User-Agent": "go-downloader / 0.0.0-test",
 		},
@@ -259,7 +259,7 @@ func TestContextCancelation(t *testing.T) {
 	}()
 
 	// Run slow download
-	err := downloader.DownloadWithConfigAndContext(ctx, tmpFile, server.URL+"/slow", downloader.Config{
+	err := downloader.DownloadWithConfig(ctx, tmpFile, server.URL+"/slow", downloader.Config{
 		PollInterval: 100 * time.Millisecond,
 		PollFunction: callback,
 	})
@@ -285,7 +285,7 @@ func TestTimeoutOnHEADCall(t *testing.T) {
 	}
 
 	startTime := time.Now()
-	err := downloader.DownloadWithConfig(tmpFile, server.URL+"/timeout", config)
+	err := downloader.DownloadWithConfig(t.Context(), tmpFile, server.URL+"/timeout", config)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "context deadline exceeded")
 	elapsed := time.Since(startTime)
@@ -313,7 +313,7 @@ func TestTimeoutOnGETCall(t *testing.T) {
 	}
 
 	startTime := time.Now()
-	err := downloader.DownloadWithConfig(tmpFile, server.URL+"/slow", config)
+	err := downloader.DownloadWithConfig(t.Context(), tmpFile, server.URL+"/slow", config)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "i/o timeout")
 	elapsed := time.Since(startTime)
@@ -358,7 +358,7 @@ func TestInactivityTimeout(t *testing.T) {
 	// (should timeout due to inactivity)
 	tmpFile := makeTmpFile(t)
 	startTime := time.Now()
-	err := downloader.DownloadWithConfigAndContext(
+	err := downloader.DownloadWithConfig(
 		t.Context(), tmpFile, server.URL+"/inactive",
 		downloader.Config{
 			InactivityTimeout: 500 * time.Millisecond,
