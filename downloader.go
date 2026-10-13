@@ -13,7 +13,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -146,26 +145,31 @@ func DownloadWithConfig(ctx context.Context, file string, reqURL string, config 
 		completed.Store(localSize)
 	}
 	if config.PollFunction != nil {
-		var updateLock sync.Mutex
 		update := func() {
-			updateLock.Lock()
-			defer updateLock.Unlock()
 			config.PollFunction(completed.Load(), remoteSize)
 		}
 
 		// send initial update
 		update()
 
-		interval := cmp.Or(config.PollInterval.Abs(), 250*time.Millisecond)
-		var t *time.Timer
-		t = time.AfterFunc(interval, func() {
-			// send intermediate updates
-			update()
-			t.Reset(interval)
-		})
+		ticker := time.NewTicker(cmp.Or(config.PollInterval.Abs(), 250*time.Millisecond))
+		stop := make(chan struct{})
+		go func() {
+			for {
+				select {
+				case <-ticker.C:
+					// send intermediate updates
+					update()
+				case <-stop:
+					return
+				}
+			}
+		}()
 
 		defer func() {
-			t.Stop()
+			ticker.Stop()
+			// unbuffered send: returns when the polling goroutine receives it and exits
+			stop <- struct{}{}
 			// send final update
 			update()
 		}()

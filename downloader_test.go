@@ -14,6 +14,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -372,4 +373,39 @@ func TestInactivityTimeout(t *testing.T) {
 
 	// Check that it took around 1 second (initial burst of data 500ms + 500ms second timeout)
 	require.InEpsilon(t, 1000*time.Millisecond, elapsed, 0.05, "Elapsed time should be around 1 second, but is %v", elapsed)
+}
+
+func TestPollFunctionNotCalledAfterReturn(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/slow", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Length", "50")
+		if r.Method == "HEAD" {
+			return
+		}
+		for range 10 {
+			time.Sleep(10 * time.Millisecond)
+			fmt.Fprintf(w, "AAAAA")
+			w.(http.Flusher).Flush()
+		}
+	})
+	server := httptest.NewServer(mux)
+	t.Cleanup(server.Close)
+
+	for range 20 {
+		var returned atomic.Bool
+		var lateCalls atomic.Int32
+		err := downloader.DownloadWithConfig(t.Context(), makeTmpFile(t), server.URL+"/slow", downloader.Config{
+			PollInterval: time.Nanosecond,
+			PollFunction: func(current, size int64) {
+				if returned.Load() {
+					lateCalls.Add(1)
+				}
+			},
+		})
+		require.NoError(t, err)
+		returned.Store(true)
+
+		time.Sleep(20 * time.Millisecond)
+		require.Zero(t, lateCalls.Load(), "PollFunction called after DownloadWithConfig returned")
+	}
 }
